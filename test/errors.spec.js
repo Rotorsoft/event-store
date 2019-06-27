@@ -1,16 +1,27 @@
 'use strict'
 
-const Aggregate = require('../../src/Aggregate')
-const CommandHandler = require('../../src/CommandHandler')
-const FirestoreEventStore = require('../../src/firestore/FirestoreEventStore')
+const { startProject, endProject } = require('./setup')
+const { Factory, Actor, Aggregate, CommandHandler } = require('../index')
+const FirestoreEventStore = require('../src/firestore/FirestoreEventStore')
 const { Calculator } = require('./model')
-const { InvalidAggregate, InvalidAggregate2, InvalidHandler } = require('./invalid')
-const { getFirestoreCommandHandler, firestore } = require('../setup')
-const actor1 = { id: 'user1', name: 'user1', tenant: 'tenant1', roles: [] }
+const { InvalidAggregate } = require('./invalid')
 
-const ch = getFirestoreCommandHandler(firestore, [Calculator])
+const actor1 = new Actor({ id: 'user1', name: 'user1', tenant: 'tenant1', roles: [] })
+let factory, ch
 
 describe('Err handling', () => {
+  before (async () => {
+    console.log('starting project err')
+    const firestore = await startProject('err')
+    factory = new Factory(firestore)
+    ch = factory.createCommandHandler([Calculator])
+  })
+
+  after (async () => {
+    console.log('ending project err')
+    await endProject('err')
+  })
+
   it('should throw missing arguments actor', async () => {
     try {
       await ch.command(null, 'AddNumbers', { number1: 1, number2: 2, aggregateId: 'calc22' })
@@ -23,41 +34,41 @@ describe('Err handling', () => {
 
   it('should throw missing arguments actor.id', async () => {
     try {
-      await ch.command({ name: 'user1', tenant: 'tenant1', roles: [] }, 'AddNumbers', { number1: 1, number2: 2, aggregateId: 'calc22' })
+      await ch.command(new Actor({ name: 'user1', tenant: 'tenant1', roles: [] }), 'AddNumbers', { number1: 1, number2: 2, aggregateId: 'calc22' })
     }
     catch(error) {
       error.name.should.be.equal('MissingArgumentError')
-      error.argument.should.be.equal('actor.id')
+      error.argument.should.be.equal('id')
     }
   })
 
   it('should throw missing arguments actor.name', async () => {
     try {
-      await ch.command({ id: 'user1', tenant: 'tenant1', roles: [] }, 'AddNumbers', { number1: 1, number2: 2, aggregateId: 'calc22' })
+      await ch.command(new Actor({ id: 'user1', tenant: 'tenant1', roles: [] }), 'AddNumbers', { number1: 1, number2: 2, aggregateId: 'calc22' })
     }
     catch(error) {
       error.name.should.be.equal('MissingArgumentError')
-      error.argument.should.be.equal('actor.name')
+      error.argument.should.be.equal('name')
     }
   })
 
   it('should throw missing arguments actor.tenant', async () => {
     try {
-      await ch.command({ id: 'user1', name: 'user1', roles: [] }, 'AddNumbers', { number1: 1, number2: 2, aggregateId: 'calc22' })
+      await ch.command(new Actor({ id: 'user1', name: 'user1', roles: [] }), 'AddNumbers', { number1: 1, number2: 2, aggregateId: 'calc22' })
     }
     catch(error) {
       error.name.should.be.equal('MissingArgumentError')
-      error.argument.should.be.equal('actor.tenant')
+      error.argument.should.be.equal('tenant')
     }
   })
 
   it('should throw missing arguments actor.roles', async () => {
     try {
-      await ch.command({ id: 'user1', name: 'user1', tenant: 'tenant1' }, 'AddNumbers', { number1: 1, number2: 2, aggregateId: 'calc22' })
+      await ch.command(new Actor({ id: 'user1', name: 'user1', tenant: 'tenant1' }), 'AddNumbers', { number1: 1, number2: 2, aggregateId: 'calc22' })
     }
     catch(error) {
       error.name.should.be.equal('MissingArgumentError')
-      error.argument.should.be.equal('actor.roles')
+      error.argument.should.be.equal('roles')
     }
   })
 
@@ -103,6 +114,18 @@ describe('Err handling', () => {
 })
 
 describe('Not implemented', () => {
+  before (async () => {
+    console.log('starting project err2')
+    const firestore = await startProject('err2')
+    factory = new Factory(firestore)
+    ch = factory.createCommandHandler([Calculator])
+  })
+
+  after (async () => {
+    console.log('ending project err2')
+    await endProject('err2')
+  })
+
   it('should throw not implemented loadAggregate', async () => {
     const m = FirestoreEventStore.prototype.loadAggregate
     try {
@@ -130,7 +153,18 @@ describe('Not implemented', () => {
   })
 })
 
-describe('Err handling 2', () => {  
+describe('Err handling 2', () => { 
+  before (async () => {
+    console.log('starting project err3')
+    const firestore = await startProject('err3')
+    factory = new Factory(firestore)
+  })
+
+  after (async () => {
+    console.log('ending project err3')
+    await endProject('err3')
+  })
+
   it('should throw invalid arguments: store', async () => {
     try {
       let ch2 = new CommandHandler(new Object(), [])
@@ -143,7 +177,7 @@ describe('Err handling 2', () => {
 
   it('should throw not implemented commands', async () => {
     try {
-      const ch = getFirestoreCommandHandler(firestore, [InvalidAggregate])
+      const ch = factory.createCommandHandler([InvalidAggregate])
       await ch.command(actor1, 'InvalidCommand', { number1: 1, number2: 2 })
     }
     catch(error) { 
@@ -154,7 +188,7 @@ describe('Err handling 2', () => {
 
   it('should throw not implemented events', async () => {
     try {
-      const ch = getFirestoreCommandHandler(firestore, [InvalidAggregate])
+      const ch = factory.createCommandHandler([InvalidAggregate])
       InvalidAggregate.prototype.handleCommand = Calculator.prototype.handleCommand
       await ch.command(actor1, 'InvalidCommand', { number1: 1, number2: 2 })
     }
@@ -166,7 +200,7 @@ describe('Err handling 2', () => {
 
   it('should throw invalid arguments aggregateType', async () => {
     try {
-      const ch = getFirestoreCommandHandler(firestore, [InvalidCommand])
+      const ch = factory.createCommandHandler([InvalidCommand])
     }
     catch(error) {
       error.message.should.be.equal('InvalidCommand is not defined')
@@ -175,7 +209,7 @@ describe('Err handling 2', () => {
 
   it('should throw precondition error', async () => {
     try {
-      const ch = getFirestoreCommandHandler(firestore, [InvalidAggregate])
+      const ch = factory.createCommandHandler([InvalidAggregate])
       await ch.command(actor1, 'InvalidCommand3', { a: 1, b: 3 })
     }
     catch(error) {
@@ -189,9 +223,9 @@ describe('Err handling 2', () => {
       class A extends Aggregate {
         constructor() { super() }
         static get path () { return '/invalids' }
-        get commands () { return { C: async () => { this.addEvent('a', 'E', {}) } } }
+        get commands () { return { C: async () => { this.push('a', 'E', {}) } } }
       }
-      const ch = getFirestoreCommandHandler(firestore, [A])
+      const ch = factory.createCommandHandler([A])
       await ch.command(actor1, 'C')
     }
     catch(error) {
@@ -207,7 +241,7 @@ describe('Err handling 2', () => {
         static get path () { return '/invalids' }
         get events () { return { E: () => {} } }
       }
-      const ch = getFirestoreCommandHandler(firestore, [A])
+      const ch = factory.createCommandHandler([A])
       await ch.command(actor1, 'C')
     }
     catch(error) {

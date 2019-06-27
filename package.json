@@ -1,23 +1,28 @@
 {
-  "name": "@rotorsoft/firebase-event-store",
-  "version": "3.1.1",
-  "description": "Simple multi-tenant event sourcing store based on firestore",
+  "name": "@rotorsoft/event-store",
+  "version": "0.1.0",
+  "description": "Generic multi-tenant event sourcing store",
   "main": "index.js",
   "scripts": {
-    "test1": "mocha ./test/basic/basic.spec.js --reporter spec --timeout 10000 || exit 0",
-    "test": "mocha ./test/**/*.spec.js --reporter spec --timeout 10000 || exit 0",
-    "cover": "istanbul cover ./node_modules/mocha/bin/_mocha ./test/**/*.spec.js -- -R spec --timeout 10000"
+    "mocha-one": "mocha ./test/basic/basic.spec.js --reporter spec --timeout 10000 || exit 0",
+    "mocha-all": "mocha ./test/**/*.spec.js --reporter spec --timeout 10000 || exit 0",
+    "cover-all": "istanbul cover ./node_modules/mocha/bin/_mocha ./test/**/*.spec.js -- -R spec --timeout 10000",
+    "test": "firebase emulators:exec --only firestore \"npm run mocha-all\"",
+    "cover": "firebase emulators:exec --only firestore \"npm run cover-all\""
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Rotorsoft/firebase-event-store.git"
+    "url": "git+https://github.com/Rotorsoft/event-store.git"
   },
   "keywords": [
-    "firebase",
     "CQRS",
-    "event",
-    "sourcing",
-    "firestore"
+    "Event Sourcing",
+    "DDD",
+    "Serverless",
+    "Firebase",
+    "Firestore",
+    "CosmosDB",
+    "DynamoDB"
   ],
   "author": {
     "name": "rotorsoft",
@@ -25,20 +30,19 @@
   },
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/rotorsoft/firebase-event-store/issues"
+    "url": "https://github.com/rotorsoft/event-store/issues"
   },
-  "homepage": "https://github.com/rotorsoft/firebase-event-store#readme",
+  "homepage": "https://github.com/rotorsoft/event-store#readme",
   "dependencies": {},
   "engines": {
     "node": ">=8.0.0"
   },
   "devDependencies": {
+    "@firebase/testing": "^0.11.3",
     "chai": "^4.2.0",
-    "coveralls": "^3.0.2",
-    "firebase-mock": "^2.2.10",
+    "coveralls": "^3.0.4",
     "istanbul": "^1.1.0-alpha.1",
-    "lodash": "^4.17.11",
-    "mocha": "^5.2.0",
+    "mocha": "^6.1.4",
     "mocha-lcov-reporter": "^1.3.0"
   }
 }

@@ -37,15 +37,15 @@ module.exports = class Aggregate {
   static get stream () { return 'main' }
 
   /**
-   * Object map of async command handlers receiving actor and payload arguments
+   * Object map of async command handlers receiving command context
    * 
    * Example:
    *    get commands () {
    *      return {
-   *        Command1: async (actor, payload) => {
+   *        Command1: async (context) => {
    *          ...
    *        },
-   *        Command2: async (actor, payload) => {
+   *        Command2: async (context) => {
    *          ...
    *        }
    *      }
@@ -71,23 +71,14 @@ module.exports = class Aggregate {
   get events () { throw Err.notImplemented('events') }
 
   /**
-   * Loads event object when replaying aggregate
-   * @param {Event} event
-   */
-  _loadEvent (event) {
-    this.events[event.eventName](event)
-    this._aggregate_version_++
-  }
-
-  /**
-   * Event factory method used by command handlers
+   * Event factory method used by command handlers to push new events
    * @param {String} name event name
    * @param {Object} payload event payload
    * @param {Integer} version optional event version
    */
-  addEvent (name, payload, version = 0) {
-    const event = Event.create({ _event_name_: name, _event_version_: version, ...payload })
-    this.events[event.eventName](event)
+  push (name, payload, version = 0) {
+    const event = new Event({ name, version, payload })
+    this.events[name](event)
     this._uncommitted_events_.push(event)
   }
 

@@ -1,6 +1,6 @@
 'use strict'
 
-const { Aggregate, Err } = require('../../index')
+const { Aggregate, Err } = require('../index')
 
 const OPERATORS = {
   ['+']: (l, r) => l + r, 
@@ -27,43 +27,43 @@ module.exports = class Calculator extends Aggregate {
 
   get commands () { 
     return { 
-      PressDigit: async (actor, _) => {
-        if (_.digit < '0' || _.digit > '9') throw Err.invalidArgument('digit')
-        this.addEvent(EVENTS.DigitPressed, _)
+      PressDigit: async context => {
+        if (context.payload.digit < '0' || context.payload.digit > '9') throw Err.invalidArgument('digit')
+        this.push(EVENTS.DigitPressed, context.payload)
       },
-      PressDot: async (actor, _) => {
-        this.addEvent(EVENTS.DotPressed, _)
+      PressDot: async context => {
+        this.push(EVENTS.DotPressed, context.payload)
       },
-      PressOperator: async (actor, _) => {
-        if (!Object.keys(OPERATORS).includes(_.operator)) throw Err.invalidArgument('operator')
-        this.addEvent(EVENTS.OperatorPressed, _)
+      PressOperator: async context => {
+        if (!Object.keys(OPERATORS).includes(context.payload.operator)) throw Err.invalidArgument('operator')
+        this.push(EVENTS.OperatorPressed, context.payload)
       },
-      PressEquals: async (actor, _) => {
-        this.addEvent(EVENTS.EqualsPressed, _)
+      PressEquals: async context => {
+        this.push(EVENTS.EqualsPressed, context.payload)
       }
     }
   }
 
   get events () {
     return { 
-      [EVENTS.DigitPressed]: _ => {
+      [EVENTS.DigitPressed]: event => {
         if (this.operator) {
-          this.right = (this.right || '').concat(_.digit)
+          this.right = (this.right || '').concat(event.payload.digit)
         }
-        else this.left = (this.left || '').concat(_.digit)
+        else this.left = (this.left || '').concat(event.payload.digit)
       },
-      [EVENTS.DotPressed]: _ => {
+      [EVENTS.DotPressed]: event => {
         if (this.operator) {
           this.right = (this.right || '').concat('.')
         }
         else this.left = (this.left || '').concat('.')
       },
-      [EVENTS.OperatorPressed]: _ => {
+      [EVENTS.OperatorPressed]: event => {
         if (this.operator) this.compute()
-        this.operator = _.operator
+        this.operator = event.payload.operator
         this.right = null
       },
-      [EVENTS.EqualsPressed]: _ => {
+      [EVENTS.EqualsPressed]: event => {
         this.compute()
       }
     }

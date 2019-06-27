@@ -1,18 +1,26 @@
-firebase-event-store [![Build Status](https://travis-ci.org/Rotorsoft/firebase-event-store.svg?branch=master)](https://travis-ci.org/Rotorsoft/firebase-event-store) [![Coverage Status](https://coveralls.io/repos/github/Rotorsoft/firebase-event-store/badge.svg?branch=master)](https://coveralls.io/github/Rotorsoft/firebase-event-store?branch=master)
+@rotorsoft/event-store [![Build Status](https://travis-ci.org/Rotorsoft/event-store.svg?branch=master)](https://travis-ci.org/Rotorsoft/event-store) [![Coverage Status](https://coveralls.io/repos/github/Rotorsoft/event-store/badge.svg?branch=master)](https://coveralls.io/github/Rotorsoft/event-store?branch=master)
 =========
 
-I started this project as a proof of concept, trying to figure out if a low cost cloud based platform could support a couple of mobile applications I developed this year.
+The original module **@rotorsoft/firestore-event-store** was a proof of concept, just trying to figure out if a low cost cloud based serverless platform could support a number of PWA apps. This is a fork at version 3.1.1, and the new goal is to try the major cloud platforms: Azure (CosmosDB store), and AWS (DynamoDB store).
 
-[Cloud Firestore](https://firebase.google.com/docs/firestore/) is an inexpensive Non-SQL cloud database to store and sync data for mobile, web, and server development. Since most of my web applications are following the [CQRS](http://codebetter.com/gregyoung/2012/09/09/cqrs-is-not-an-architecture-2/) pattern proposed by Greg Young around 2010 (Figure 1), I was curious about using Firestore Documents and Collections to model my Event Streams, Aggregate Snapshots, and Projections. After some tinkering with the APIs, and a few beers, the Command Side started to emerge. 
+The right mix of Serverless, DDD, Event Sourcing, and CQRS is probably the best approach to software developmet today. This module follows the [CQRS](http://codebetter.com/gregyoung/2012/09/09/cqrs-is-not-an-architecture-2/) pattern proposed by Greg Young around 2010. The [Architecture](#architecture) section depicts the logical architecture using the colors of [Event Storming](https://en.wikipedia.org/wiki/Event_storming), a methodology invented by Alberto Brandolini in the context of DDD.
 
-Always afraid of overengineering, I decided not to implement the Query Side and settled for just listening to documents holding my aggregate snapshots as my Read Model (realtime listeners is a nice out-of-the-box feature in Firestore that allows clients to synchronize data with the store). The basic event handler in charge of taking snapshots also helped to speed up the write side after a few hundred events, and evaporated the extra cost of unnecessary event reads.
+One of the great advantages of Event Sourcing is having a "replayable history". With proper instrumentation you can easily solve problems like:
 
-So far the results have been positive. The store supports multiple tenants as well as multiple event streams within each tenant. Notice that this is just a seed (not to be interpreted as a framework!), and there is a lot of room for improvement. I would like to see Firebase integrating a serverless Pub/Sub messaging solution in their ecosystem. This will facilitate a refactoring of the in-memory Bus to make it more scalable. I would also like to revisit the Query Side and explore different types of projection models... In the meantime, I will be deploying more apps.
+* Testing the application at any point in time
+* Integrating to other systems by just resending events to a new handler
+* Recreating or creating new projections when requirements change
+* Keeping documentation in sync with the source code - Self documenting code
 
-[Sat Jan 5 2019] - Released code implementing a Kafka like pub/sub messaging mechanism where consumers can subscribe to the bus at any time and wait for events to be pushed by stream readers. After events are handled succesfully, the reading position (cursor) of each consumer (event handler) is stored with the stream to avoid resending events. Event handlers must be idempotent though, since there is always a chance of events being pushed more than once.
+The current model supports multiple tenants as well as multiple event streams within each tenant. Actors belonging to a single tenant can carry multiple roles.
 
-[Feb 10, 2019] - After initializing a project via the firebase CLI, the following rules and indexes should be published in order to secure the database from external writes and allow event queries to work.
+Users should adapt their apps to the event delivery mechanisms supported by their cloud provider of choice. The Event Reader interface can be implemented as an optional tool to process events from the store.  
 
+## Settings
+
+Each cloud provider will require some specific settings to secure and/or index the store. 
+
+### Firestore settings
 ##### firestore.rules
 
 ````json 
@@ -41,28 +49,32 @@ service cloud.firestore {
     {
       "collectionId": "events",
       "fields": [
-        { "fieldPath": "_t", "mode": "ASCENDING" },
-        { "fieldPath": "_a", "mode": "ASCENDING" },
-        { "fieldPath": "_v", "mode": "ASCENDING" }
+        { "fieldPath": "agg_type", "mode": "ASCENDING" },
+        { "fieldPath": "agg_id", "mode": "ASCENDING" },
+        { "fieldPath": "agg_version", "mode": "ASCENDING" }
       ]
     }
   ]
 }
 ````
 
-#### Figure 1. CQRS - Command Query Resposibility Segregation Reference Architecture
-![Figure 1](/assets/CQRSArchitecture.PNG)
+## Architecture
+
+Command Query Resposibility Segregation Reference Architecture
+
+![CQRS](/assets/CQRSArchitecture.PNG)
 
 ## Installation
 
-  `npm install @rotorsoft/firebase-event-store`
+  `npm install @rotorsoft/event-store`
 
 ## Usage
 
-A trivial aggregate and event handler:
+A trivial aggregate and event handler using Firestore:
 
 ```javascript
-const { getFirestoreCommandHandler, getFirestoreStreamReader, Aggregate, IEventHandler, Err } = require('@rotorsoft/firebase-event-store')
+const firebase = require('firebase')
+const { Factory, Actor, Aggregate, IEventHandler, Err } = require('@rotorsoft/event-store')
 
 const EVENTS = {
   NumbersAdded: 'NumbersAdded',
@@ -79,26 +91,26 @@ class Calculator extends Aggregate {
 
   get commands () { 
     return { 
-      AddNumbers: async (actor, _) => {
-        if (!Number.isInteger(_.number1)) throw Err.invalidArgument('number1')
-        if (!Number.isInteger(_.number2)) throw Err.invalidArgument('number2')
-        this.addEvent(EVENTS.NumbersAdded, _)
+      AddNumbers: async context => {
+        if (!Number.isInteger(context.payload.number1)) throw Err.invalidArgument('number1')
+        if (!Number.isInteger(context.payload.number2)) throw Err.invalidArgument('number2')
+        this.push(EVENTS.NumbersAdded, context.payload)
       },
-      SubtractNumbers: async (actor, _) => {
-        if (!Number.isInteger(_.number1)) throw Err.invalidArgument('number1')
-        if (!Number.isInteger(_.number2)) throw Err.invalidArgument('number2')
-        this.addEvent(EVENTS.NumbersSubtracted, _)
+      SubtractNumbers: async context => {
+        if (!Number.isInteger(context.payload.number1)) throw Err.invalidArgument('number1')
+        if (!Number.isInteger(context.payload.number2)) throw Err.invalidArgument('number2')
+        this.push(EVENTS.NumbersSubtracted, context.payload)
       }
     }
   }
 
   get events () {
     return { 
-      [EVENTS.NumbersAdded]: _ => {
-        this.sum += (_.number1 + _.number2)
+      [EVENTS.NumbersAdded]: event => {
+        this.sum += (event.payload.number1 + event.payload.number2)
       },
-      [EVENTS.NumbersSubtracted]: _ => {
-        this.sum -= (_.number1 + _.number2)
+      [EVENTS.NumbersSubtracted]: event => {
+        this.sum -= (event.payload.number1 + event.payload.number2)
       }
     }
   }
@@ -130,15 +142,15 @@ class EventCounter extends IEventHandler {
   }
 }
 
-const firestore = //TODO get firestore ref
-const ch = getFirestoreCommandHandler(firestore, [Calculator])
-const sr = getFirestoreStreamReader(firestore, 'tenant1', 'main', [new EventCounter(docStore)])
-let actor = { id: 'user1', name: 'actor 1', tenant: 'tenant1', roles: ['manager', 'user'] }
-let calc = await ch.command(actor, 'AddNumbers', { number1: 1, number2: 2, aggregateId: 'calc1' })
-calc = await ch.command(actor, 'AddNumbers', { number1: 3, number2: 4, aggregateId: calc.aggregateId, expectedVersion: calc.aggregateVersion })
-calc = await ch.command(actor, 'SubtractNumbers', { aggregateId: 'calc1', number1: 1, number2: 1 })
-await sr.poll()
-console.log('calculator', calc)
+const factory = new Factory(firebase.firestore())
+const ch = factory.createCommandHandler([Calculator])
+const sr = factory.createStreamReader()
+let actor = new Actor({ id: 'user1', name: 'actor 1', tenant: 'tenant1', roles: ['manager', 'user'] })
+let context = await ch.command(actor, 'AddNumbers', { number1: 1, number2: 2, aggregateId: 'calc1' })
+context = await ch.command(actor, 'AddNumbers', { number1: 3, number2: 4, aggregateId: context.aggregateId, expectedVersion: context.aggregate.aggregateVersion })
+context = await ch.command(actor, 'SubtractNumbers', { aggregateId: 'calc1', number1: 1, number2: 1 })
+await sr.poll('tenant1', 'main', [new EventCounter(firestore)])
+console.log('calculator', context.aggregate)
 ```
 
 Let's now pretend that we need to build a real basic calculator and store every single key pressed in a ledger for audit purposes. The calculator aggregate might look like this:
@@ -146,7 +158,7 @@ Let's now pretend that we need to build a real basic calculator and store every 
 ```javascript
 'use strict'
 
-const { Aggregate, Err } = require('../../index')
+const { Aggregate, Err } = require('@rotorsoft/event-store')
 
 const OPERATORS = {
   ['+']: (l, r) => l + r, 
@@ -173,43 +185,43 @@ module.exports = class Calculator extends Aggregate {
 
   get commands () { 
     return { 
-      PressDigit: async (actor, _) => {
-        if (_.digit < '0' || _.digit > '9') throw Err.invalidArgument('digit')
-        this.addEvent(EVENTS.DigitPressed, _)
+      PressDigit: async context => {
+        if (context.payload.digit < '0' || context.payload.digit > '9') throw Err.invalidArgument('digit')
+        this.push(EVENTS.DigitPressed, context.payload)
       },
-      PressDot: async (actor, _) => {
-        this.addEvent(EVENTS.DotPressed, _)
+      PressDot: async context => {
+        this.push(EVENTS.DotPressed, context.payload)
       },
-      PressOperator: async (actor, _) => {
-        if (!Object.keys(OPERATORS).includes(_.operator)) throw Err.invalidArgument('operator')
-        this.addEvent(EVENTS.OperatorPressed, _)
+      PressOperator: async context => {
+        if (!Object.keys(OPERATORS).includes(context.payload.operator)) throw Err.invalidArgument('operator')
+        this.push(EVENTS.OperatorPressed, context.payload)
       },
-      PressEquals: async (actor, _) => {
-        this.addEvent(EVENTS.EqualsPressed, _)
+      PressEquals: async context => {
+        this.push(EVENTS.EqualsPressed, context.payload)
       }
     }
   }
 
   get events () {
     return { 
-      [EVENTS.DigitPressed]: _ => {
+      [EVENTS.DigitPressed]: event => {
         if (this.operator) {
-          this.right = (this.right || '').concat(_.digit)
+          this.right = (this.right || '').concat(event.payload.digit)
         }
-        else this.left = (this.left || '').concat(_.digit)
+        else this.left = (this.left || '').concat(event.payload.digit)
       },
-      [EVENTS.DotPressed]: _ => {
+      [EVENTS.DotPressed]: event => {
         if (this.operator) {
           this.right = (this.right || '').concat('.')
         }
         else this.left = (this.left || '').concat('.')
       },
-      [EVENTS.OperatorPressed]: _ => {
+      [EVENTS.OperatorPressed]: event => {
         if (this.operator) this.compute()
-        this.operator = _.operator
+        this.operator = event.payload.operator
         this.right = null
       },
-      [EVENTS.EqualsPressed]: _ => {
+      [EVENTS.EqualsPressed]: event => {
         this.compute()
       }
     }
@@ -231,11 +243,10 @@ And we can unit test it with chai:
 ```javascript
 'use strict'
 
+const firebase = require('firebase')
+const { Factory, Actor, Aggregate, IEventHandler, Err } = require('@rotorsoft/event-store')
 const Calculator = require('./calculator')
-
-let bus
-
-const actor1 = { id: 'user1', name: 'user1', tenant: 'tenant1', roles: [] }
+const actor1 = new Actor({ id: 'user1', name: 'user1', tenant: 'tenant1', roles: [] })
 
 class ConsoleTracer extends ITracer {
   constructor () {
@@ -247,7 +258,7 @@ class ConsoleTracer extends ITracer {
     const { method, context, events, ...args } = fn()
     if (method && events) {
       for (let event of events) {
-        const key = event.commandName + '-' + event.eventName
+        const key = event.command + '-' + event.name
         const s = this.stats[method] || {}
         const t = s[context.aggregateType.name] || {}
         const e = t[key] || {} 
@@ -261,322 +272,110 @@ class ConsoleTracer extends ITracer {
   }
 }
 
-const tracer = new ConsoleTracer()
+const factory = new Factory(firebase.firestore())
+const ch = factory.createCommandHandler([Calculator], new ConsoleTracer())
 
 describe('Calculator basic operations', () => {
-  before (() => {
-    ch = getFirestoreCommandHandler(firestore, [Calculator], { tracer }) // SEE FULL CHAI AND FIREBASE-MOCK SETUP IN TEST FOLDER
-  })
-
   async function c (calc, command, payload) {
     return await ch.command(actor1, command, Object.assign(payload, { aggregateId: calc.aggregateId, expectedVersion: calc.aggregateVersion }))
   }
 
   it('should compute 1+2-3*5=0', async () => {
-    let calc
-    calc = await ch.command(actor1, 'PressDigit', { digit: '1', aggregateId: 'c1' })
-    calc = await c(calc, 'PressOperator', { operator: '+' })
-    calc = await c(calc, 'PressDigit', { digit: '2'})
-    calc = await c(calc, 'PressOperator', { operator: '-' })
-    calc = await c(calc, 'PressDigit', { digit: '3'})
-    calc = await c(calc, 'PressOperator', { operator: '*' })
-    calc = await c(calc, 'PressDigit', { digit: '5' })
-    calc = await c(calc, 'PressEquals', {})
+    let ctx
+    ctx = await ch.command(actor1, 'PressDigit', { digit: '1', aggregateId: 'c1' })
+    ctx = await c(ctx.aggregate, 'PressOperator', { operator: '+' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '2'})
+    ctx = await c(ctx.aggregate, 'PressOperator', { operator: '-' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '3'})
+    ctx = await c(ctx.aggregate, 'PressOperator', { operator: '*' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '5' })
+    ctx = await c(ctx.aggregate, 'PressEquals', {})
   
-    calc.result.should.equal(0)
+    ctx.aggregate.result.should.equal(0)
   })
 
   it('should compute 4*4+21-16*3=63', async () => {
-    let calc
-    calc = await ch.command(actor1, 'PressDigit', { digit: '4', aggregateId: 'c2' })
-    calc = await c(calc, 'PressOperator', { operator: '*' })
-    calc = await c(calc, 'PressDigit', { digit: '4' })
-    calc = await c(calc, 'PressOperator', { operator: '+' })
-    calc = await c(calc, 'PressDigit', { digit: '2' })
-    calc = await c(calc, 'PressDigit', { digit: '1' })
-    calc = await c(calc, 'PressOperator', { operator: '-' })
-    calc = await c(calc, 'PressDigit', { digit: '1' })
-    calc = await c(calc, 'PressDigit', { digit: '6' })
-    calc = await c(calc, 'PressOperator', { operator: '*' })
-    calc = await c(calc, 'PressDigit', { digit: '3' })
-    calc = await c(calc, 'PressEquals', {})
+    let ctx
+    ctx = await ch.command(actor1, 'PressDigit', { digit: '4', aggregateId: 'c2' })
+    ctx = await c(ctx.aggregate, 'PressOperator', { operator: '*' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '4' })
+    ctx = await c(ctx.aggregate, 'PressOperator', { operator: '+' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '2' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '1' })
+    ctx = await c(ctx.aggregate, 'PressOperator', { operator: '-' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '1' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '6' })
+    ctx = await c(ctx.aggregate, 'PressOperator', { operator: '*' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '3' })
+    ctx = await c(ctx.aggregate, 'PressEquals', {})
   
-    calc.result.should.equal(63)
+    ctx.aggregate.result.should.equal(63)
   })
 
   it('should compute 4*4+21-16*3===567', async () => {
-    let calc
-    calc = await ch.command(actor1, 'PressDigit', { digit: '4', aggregateId: 'c3' })
-    calc = await c(calc, 'PressOperator', { operator: '*' })
-    calc = await c(calc, 'PressDigit', { digit: '4' })
-    calc = await c(calc, 'PressOperator', { operator: '+' })
-    calc = await c(calc, 'PressDigit', { digit: '2' })
-    calc = await c(calc, 'PressDigit', { digit: '1' })
-    calc = await c(calc, 'PressOperator', { operator: '-' })
-    calc = await c(calc, 'PressDigit', { digit: '1' })
-    calc = await c(calc, 'PressDigit', { digit: '6' })
-    calc = await c(calc, 'PressOperator', { operator: '*' })
-    calc = await c(calc, 'PressDigit', { digit: '3' })
-    calc = await c(calc, 'PressEquals', {})
-    calc = await c(calc, 'PressEquals', {})
-    calc = await c(calc, 'PressEquals', {})
+    let ctx
+    ctx = await ch.command(actor1, 'PressDigit', { digit: '4', aggregateId: 'c3' })
+    ctx = await c(ctx.aggregate, 'PressOperator', { operator: '*' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '4' })
+    ctx = await c(ctx.aggregate, 'PressOperator', { operator: '+' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '2' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '1' })
+    ctx = await c(ctx.aggregate, 'PressOperator', { operator: '-' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '1' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '6' })
+    ctx = await c(ctx.aggregate, 'PressOperator', { operator: '*' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '3' })
+    ctx = await c(ctx.aggregate, 'PressEquals', {})
+    ctx = await c(ctx.aggregate, 'PressEquals', {})
+    ctx = await c(ctx.aggregate, 'PressEquals', {})
   
-    calc.result.should.equal(567)
+    ctx.aggregate.result.should.equal(567)
   })
 
   it('should compute 1.5+2.0-11.22+.33=-7.39', async () => {
-    let calc
-    calc = await ch.command(actor1, 'PressDigit', { digit: '1', aggregateId: 'c4' })
-    calc = await c(calc, 'PressDot', {})
-    calc = await c(calc, 'PressDigit', { digit: '5'})    
-    calc = await c(calc, 'PressOperator', { operator: '+' })
-    calc = await c(calc, 'PressDigit', { digit: '2'})
-    calc = await c(calc, 'PressDot', {})
-    calc = await c(calc, 'PressDigit', { digit: '0'})    
-    calc = await c(calc, 'PressOperator', { operator: '-' })
-    calc = await c(calc, 'PressDigit', { digit: '1'})
-    calc = await c(calc, 'PressDigit', { digit: '1'})
-    calc = await c(calc, 'PressDot', {})
-    calc = await c(calc, 'PressDigit', { digit: '2'})
-    calc = await c(calc, 'PressDigit', { digit: '2'})
-    calc = await c(calc, 'PressOperator', { operator: '+' })
-    calc = await c(calc, 'PressDot', {})
-    calc = await c(calc, 'PressDigit', { digit: '3' })
-    calc = await c(calc, 'PressDigit', { digit: '3' })
-    calc = await c(calc, 'PressEquals', {})
+    let ctx
+    ctx = await ch.command(actor1, 'PressDigit', { digit: '1', aggregateId: 'c4' })
+    ctx = await c(ctx.aggregate, 'PressDot', {})
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '5'})    
+    ctx = await c(ctx.aggregate, 'PressOperator', { operator: '+' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '2'})
+    ctx = await c(ctx.aggregate, 'PressDot', {})
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '0'})    
+    ctx = await c(ctx.aggregate, 'PressOperator', { operator: '-' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '1'})
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '1'})
+    ctx = await c(ctx.aggregate, 'PressDot', {})
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '2'})
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '2'})
+    ctx = await c(ctx.aggregate, 'PressOperator', { operator: '+' })
+    ctx = await c(ctx.aggregate, 'PressDot', {})
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '3' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '3' })
+    ctx = await c(ctx.aggregate, 'PressEquals', {})
   
-    calc.result.toFixed(2).should.equal('-7.39')
+    ctx.aggregate.result.toFixed(2).should.equal('-7.39')
   })
 
   it('should compute 5.23/.33*2=31.6969696969697', async () => {
-    let calc
-    calc = await ch.command(actor1, 'PressDigit', { digit: '5', aggregateId: 'c5' })
-    calc = await c(calc, 'PressDot', {})
-    calc = await c(calc, 'PressDigit', { digit: '2'})
-    calc = await c(calc, 'PressDigit', { digit: '3'})   
-    calc = await c(calc, 'PressOperator', { operator: '/' })
-    calc = await c(calc, 'PressDot', {})
-    calc = await c(calc, 'PressDigit', { digit: '3' })
-    calc = await c(calc, 'PressDigit', { digit: '3' })
-    calc = await c(calc, 'PressOperator', { operator: '*' })
-    calc = await c(calc, 'PressDigit', { digit: '2'})
-    calc = await c(calc, 'PressEquals', {})
+    let ctx
+    ctx = await ch.command(actor1, 'PressDigit', { digit: '5', aggregateId: 'c5' })
+    ctx = await c(ctx.aggregate, 'PressDot', {})
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '2'})
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '3'})   
+    ctx = await c(ctx.aggregate, 'PressOperator', { operator: '/' })
+    ctx = await c(ctx.aggregate, 'PressDot', {})
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '3' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '3' })
+    ctx = await c(ctx.aggregate, 'PressOperator', { operator: '*' })
+    ctx = await c(ctx.aggregate, 'PressDigit', { digit: '2'})
+    ctx = await c(ctx.aggregate, 'PressEquals', {})
   
-    calc.result.should.equal(31.6969696969697)
+    ctx.aggregate.result.should.equal(31.6969696969697)
+
+    console.log(JSON.stringify(tracer.stats))
   })
 })
 ```
-After running npm test, the ConsoleTracer displays the following resuts:
-
-```
- Calculator basic operations
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c1 (v-1) with","payload":{"digit":"1"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"0","result":0,"_aggregate_id_":"c1","_aggregate_version_":-1}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c1","_v":"00","_e":"DigitPressed","digit":"1"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressOperator to Calculator c1 (v0) with","payload":{"operator":"+"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"01","result":0,"_aggregate_id_":"c1","_aggregate_version_":0}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressOperator","_a":"c1","_v":"01","_e":"OperatorPressed","operator":"+"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c1 (v1) with","payload":{"digit":"2"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"01","result":0,"_aggregate_id_":"c1","_aggregate_version_":1,"operator":"+","right":null}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c1","_v":"02","_e":"DigitPressed","digit":"2"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressOperator to Calculator c1 (v2) with","payload":{"operator":"-"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"01","result":0,"_aggregate_id_":"c1","_aggregate_version_":2,"operator":"+","right":"2"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressOperator","_a":"c1","_v":"03","_e":"OperatorPressed","operator":"-"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c1 (v3) with","payload":{"digit":"3"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"3","result":3,"_aggregate_id_":"c1","_aggregate_version_":3,"operator":"-","right":null}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c1","_v":"04","_e":"DigitPressed","digit":"3"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressOperator to Calculator c1 (v4) with","payload":{"operator":"*"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"3","result":3,"_aggregate_id_":"c1","_aggregate_version_":4,"operator":"-","right":"3"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressOperator","_a":"c1","_v":"05","_e":"OperatorPressed","operator":"*"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c1 (v5) with","payload":{"digit":"5"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"0","result":0,"_aggregate_id_":"c1","_aggregate_version_":5,"operator":"*","right":null}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c1","_v":"06","_e":"DigitPressed","digit":"5"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressEquals to Calculator c1 (v6) with","payload":{}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"0","result":0,"_aggregate_id_":"c1","_aggregate_version_":6,"operator":"*","right":"5"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressEquals","_a":"c1","_v":"07","_e":"EqualsPressed"}]}
-    √ should compute 1+2-3*5=0
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c2 (v-1) with","payload":{"digit":"4"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"0","result":0,"_aggregate_id_":"c2","_aggregate_version_":-1}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c2","_v":"00","_e":"DigitPressed","digit":"4"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressOperator to Calculator c2 (v0) with","payload":{"operator":"*"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"04","result":0,"_aggregate_id_":"c2","_aggregate_version_":0}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressOperator","_a":"c2","_v":"01","_e":"OperatorPressed","operator":"*"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c2 (v1) with","payload":{"digit":"4"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"04","result":0,"_aggregate_id_":"c2","_aggregate_version_":1,"operator":"*","right":null}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c2","_v":"02","_e":"DigitPressed","digit":"4"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressOperator to Calculator c2 (v2) with","payload":{"operator":"+"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"04","result":0,"_aggregate_id_":"c2","_aggregate_version_":2,"operator":"*","right":"4"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressOperator","_a":"c2","_v":"03","_e":"OperatorPressed","operator":"+"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c2 (v3) with","payload":{"digit":"2"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"16","result":16,"_aggregate_id_":"c2","_aggregate_version_":3,"operator":"+","right":null}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c2","_v":"04","_e":"DigitPressed","digit":"2"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c2 (v4) with","payload":{"digit":"1"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"16","result":16,"_aggregate_id_":"c2","_aggregate_version_":4,"operator":"+","right":"2"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c2","_v":"05","_e":"DigitPressed","digit":"1"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressOperator to Calculator c2 (v5) with","payload":{"operator":"-"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"16","result":16,"_aggregate_id_":"c2","_aggregate_version_":5,"operator":"+","right":"21"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressOperator","_a":"c2","_v":"06","_e":"OperatorPressed","operator":"-"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c2 (v6) with","payload":{"digit":"1"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"37","result":37,"_aggregate_id_":"c2","_aggregate_version_":6,"operator":"-","right":null}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c2","_v":"07","_e":"DigitPressed","digit":"1"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c2 (v7) with","payload":{"digit":"6"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"37","result":37,"_aggregate_id_":"c2","_aggregate_version_":7,"operator":"-","right":"1"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c2","_v":"08","_e":"DigitPressed","digit":"6"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressOperator to Calculator c2 (v8) with","payload":{"operator":"*"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"37","result":37,"_aggregate_id_":"c2","_aggregate_version_":8,"operator":"-","right":"16"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressOperator","_a":"c2","_v":"09","_e":"OperatorPressed","operator":"*"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c2 (v9) with","payload":{"digit":"3"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"21","result":21,"_aggregate_id_":"c2","_aggregate_version_":9,"operator":"*","right":null}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c2","_v":"10","_e":"DigitPressed","digit":"3"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressEquals to Calculator c2 (v10) with","payload":{}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"21","result":21,"_aggregate_id_":"c2","_aggregate_version_":10,"operator":"*","right":"3"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressEquals","_a":"c2","_v":"11","_e":"EqualsPressed"}]}
-    √ should compute 4*4+21-16*3=63
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c3 (v-1) with","payload":{"digit":"4"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"0","result":0,"_aggregate_id_":"c3","_aggregate_version_":-1}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c3","_v":"00","_e":"DigitPressed","digit":"4"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressOperator to Calculator c3 (v0) with","payload":{"operator":"*"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"04","result":0,"_aggregate_id_":"c3","_aggregate_version_":0}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressOperator","_a":"c3","_v":"01","_e":"OperatorPressed","operator":"*"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c3 (v1) with","payload":{"digit":"4"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"04","result":0,"_aggregate_id_":"c3","_aggregate_version_":1,"operator":"*","right":null}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c3","_v":"02","_e":"DigitPressed","digit":"4"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressOperator to Calculator c3 (v2) with","payload":{"operator":"+"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"04","result":0,"_aggregate_id_":"c3","_aggregate_version_":2,"operator":"*","right":"4"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressOperator","_a":"c3","_v":"03","_e":"OperatorPressed","operator":"+"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c3 (v3) with","payload":{"digit":"2"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"16","result":16,"_aggregate_id_":"c3","_aggregate_version_":3,"operator":"+","right":null}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c3","_v":"04","_e":"DigitPressed","digit":"2"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c3 (v4) with","payload":{"digit":"1"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"16","result":16,"_aggregate_id_":"c3","_aggregate_version_":4,"operator":"+","right":"2"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c3","_v":"05","_e":"DigitPressed","digit":"1"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressOperator to Calculator c3 (v5) with","payload":{"operator":"-"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"16","result":16,"_aggregate_id_":"c3","_aggregate_version_":5,"operator":"+","right":"21"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressOperator","_a":"c3","_v":"06","_e":"OperatorPressed","operator":"-"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c3 (v6) with","payload":{"digit":"1"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"37","result":37,"_aggregate_id_":"c3","_aggregate_version_":6,"operator":"-","right":null}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c3","_v":"07","_e":"DigitPressed","digit":"1"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c3 (v7) with","payload":{"digit":"6"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"37","result":37,"_aggregate_id_":"c3","_aggregate_version_":7,"operator":"-","right":"1"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c3","_v":"08","_e":"DigitPressed","digit":"6"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressOperator to Calculator c3 (v8) with","payload":{"operator":"*"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"37","result":37,"_aggregate_id_":"c3","_aggregate_version_":8,"operator":"-","right":"16"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressOperator","_a":"c3","_v":"09","_e":"OperatorPressed","operator":"*"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c3 (v9) with","payload":{"digit":"3"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"21","result":21,"_aggregate_id_":"c3","_aggregate_version_":9,"operator":"*","right":null}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c3","_v":"10","_e":"DigitPressed","digit":"3"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressEquals to Calculator c3 (v10) with","payload":{}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"21","result":21,"_aggregate_id_":"c3","_aggregate_version_":10,"operator":"*","right":"3"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressEquals","_a":"c3","_v":"11","_e":"EqualsPressed"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressEquals to Calculator c3 (v11) with","payload":{}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"63","result":63,"_aggregate_id_":"c3","_aggregate_version_":11,"operator":"*","right":"3"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressEquals","_a":"c3","_v":"12","_e":"EqualsPressed"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressEquals to Calculator c3 (v12) with","payload":{}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"189","result":189,"_aggregate_id_":"c3","_aggregate_version_":12,"operator":"*","right":"3"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressEquals","_a":"c3","_v":"13","_e":"EqualsPressed"}]}
-    √ should compute 4*4+21-16*3===567
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c4 (v-1) with","payload":{"digit":"1"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"0","result":0,"_aggregate_id_":"c4","_aggregate_version_":-1}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c4","_v":"00","_e":"DigitPressed","digit":"1"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDot to Calculator c4 (v0) with","payload":{}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"01","result":0,"_aggregate_id_":"c4","_aggregate_version_":0}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDot","_a":"c4","_v":"01","_e":"DotPressed"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c4 (v1) with","payload":{"digit":"5"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"01.","result":0,"_aggregate_id_":"c4","_aggregate_version_":1}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c4","_v":"02","_e":"DigitPressed","digit":"5"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressOperator to Calculator c4 (v2) with","payload":{"operator":"+"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"01.5","result":0,"_aggregate_id_":"c4","_aggregate_version_":2}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressOperator","_a":"c4","_v":"03","_e":"OperatorPressed","operator":"+"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c4 (v3) with","payload":{"digit":"2"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"01.5","result":0,"_aggregate_id_":"c4","_aggregate_version_":3,"operator":"+","right":null}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c4","_v":"04","_e":"DigitPressed","digit":"2"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDot to Calculator c4 (v4) with","payload":{}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"01.5","result":0,"_aggregate_id_":"c4","_aggregate_version_":4,"operator":"+","right":"2"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDot","_a":"c4","_v":"05","_e":"DotPressed"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c4 (v5) with","payload":{"digit":"0"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"01.5","result":0,"_aggregate_id_":"c4","_aggregate_version_":5,"operator":"+","right":"2."}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c4","_v":"06","_e":"DigitPressed","digit":"0"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressOperator to Calculator c4 (v6) with","payload":{"operator":"-"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"01.5","result":0,"_aggregate_id_":"c4","_aggregate_version_":6,"operator":"+","right":"2.0"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressOperator","_a":"c4","_v":"07","_e":"OperatorPressed","operator":"-"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c4 (v7) with","payload":{"digit":"1"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"3.5","result":3.5,"_aggregate_id_":"c4","_aggregate_version_":7,"operator":"-","right":null}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c4","_v":"08","_e":"DigitPressed","digit":"1"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c4 (v8) with","payload":{"digit":"1"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"3.5","result":3.5,"_aggregate_id_":"c4","_aggregate_version_":8,"operator":"-","right":"1"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c4","_v":"09","_e":"DigitPressed","digit":"1"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDot to Calculator c4 (v9) with","payload":{}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"3.5","result":3.5,"_aggregate_id_":"c4","_aggregate_version_":9,"operator":"-","right":"11"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDot","_a":"c4","_v":"10","_e":"DotPressed"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c4 (v10) with","payload":{"digit":"2"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"3.5","result":3.5,"_aggregate_id_":"c4","_aggregate_version_":10,"operator":"-","right":"11."}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c4","_v":"11","_e":"DigitPressed","digit":"2"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c4 (v11) with","payload":{"digit":"2"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"3.5","result":3.5,"_aggregate_id_":"c4","_aggregate_version_":11,"operator":"-","right":"11.2"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c4","_v":"12","_e":"DigitPressed","digit":"2"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressOperator to Calculator c4 (v12) with","payload":{"operator":"+"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"3.5","result":3.5,"_aggregate_id_":"c4","_aggregate_version_":12,"operator":"-","right":"11.22"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressOperator","_a":"c4","_v":"13","_e":"OperatorPressed","operator":"+"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDot to Calculator c4 (v13) with","payload":{}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"-7.720000000000001","result":-7.720000000000001,"_aggregate_id_":"c4","_aggregate_version_":13,"operator":"+","right":null}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDot","_a":"c4","_v":"14","_e":"DotPressed"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c4 (v14) with","payload":{"digit":"3"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"-7.720000000000001","result":-7.720000000000001,"_aggregate_id_":"c4","_aggregate_version_":14,"operator":"+","right":"."}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c4","_v":"15","_e":"DigitPressed","digit":"3"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c4 (v15) with","payload":{"digit":"3"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"-7.720000000000001","result":-7.720000000000001,"_aggregate_id_":"c4","_aggregate_version_":15,"operator":"+","right":".3"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c4","_v":"16","_e":"DigitPressed","digit":"3"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressEquals to Calculator c4 (v16) with","payload":{}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"-7.720000000000001","result":-7.720000000000001,"_aggregate_id_":"c4","_aggregate_version_":16,"operator":"+","right":".33"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressEquals","_a":"c4","_v":"17","_e":"EqualsPressed"}]}
-    √ should compute 1.5+2.0-11.22+.33=-7.39
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c5 (v-1) with","payload":{"digit":"5"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"0","result":0,"_aggregate_id_":"c5","_aggregate_version_":-1}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c5","_v":"00","_e":"DigitPressed","digit":"5"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDot to Calculator c5 (v0) with","payload":{}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"05","result":0,"_aggregate_id_":"c5","_aggregate_version_":0}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDot","_a":"c5","_v":"01","_e":"DotPressed"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c5 (v1) with","payload":{"digit":"2"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"05.","result":0,"_aggregate_id_":"c5","_aggregate_version_":1}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c5","_v":"02","_e":"DigitPressed","digit":"2"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c5 (v2) with","payload":{"digit":"3"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"05.2","result":0,"_aggregate_id_":"c5","_aggregate_version_":2}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c5","_v":"03","_e":"DigitPressed","digit":"3"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressOperator to Calculator c5 (v3) with","payload":{"operator":"/"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"05.23","result":0,"_aggregate_id_":"c5","_aggregate_version_":3}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressOperator","_a":"c5","_v":"04","_e":"OperatorPressed","operator":"/"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDot to Calculator c5 (v4) with","payload":{}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"05.23","result":0,"_aggregate_id_":"c5","_aggregate_version_":4,"operator":"/","right":null}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDot","_a":"c5","_v":"05","_e":"DotPressed"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c5 (v5) with","payload":{"digit":"3"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"05.23","result":0,"_aggregate_id_":"c5","_aggregate_version_":5,"operator":"/","right":"."}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c5","_v":"06","_e":"DigitPressed","digit":"3"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c5 (v6) with","payload":{"digit":"3"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"05.23","result":0,"_aggregate_id_":"c5","_aggregate_version_":6,"operator":"/","right":".3"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c5","_v":"07","_e":"DigitPressed","digit":"3"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressOperator to Calculator c5 (v7) with","payload":{"operator":"*"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"05.23","result":0,"_aggregate_id_":"c5","_aggregate_version_":7,"operator":"/","right":".33"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressOperator","_a":"c5","_v":"08","_e":"OperatorPressed","operator":"*"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressDigit to Calculator c5 (v8) with","payload":{"digit":"2"}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"15.84848484848485","result":15.84848484848485,"_aggregate_id_":"c5","_aggregate_version_":8,"operator":"*","right":null}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressDigit","_a":"c5","_v":"09","_e":"DigitPressed","digit":"2"}]}
-TRACE: {"msg":"actor {\"id\":\"user1\",\"name\":\"user1\",\"tenant\":\"tenant1\",\"roles\":[]} sent PressEquals to Calculator c5 (v9) with","payload":{}}
-TRACE: {"msg":"after loading Calculator","aggregate":{"left":"15.84848484848485","result":15.84848484848485,"_aggregate_id_":"c5","_aggregate_version_":9,"operator":"*","right":"2"}}
-TRACE: {"msg":"after committing","events":[{"_u":"user1","_c":"PressEquals","_a":"c5","_v":"10","_e":"EqualsPressed"}]}
-{"loadEvent":{"Calculator":{"PressDigit-DigitPressed":{"time":1544711245288,"count":232},"PressOperator-OperatorPressed":{"time":1544711245289,"count":106},"PressEquals-EqualsPressed":{"time":1544711245344,"count":3},"PressDot-DotPressed":{"time":1544711245347,"count":52}}}}
-    √ should compute 5.23/.33*2=31.6969696969697
-
-
-  33 passing (212ms)
-```
-Note the last line, here we are capturing trace stats from the store to count the number of events loaded. One of the big advantages of Event Sourcing is having a "replayable history". With proper instrumentation you can easily solve problems like:
-
-* Testing the application at any point in time
-* Integrating to other systems by just resending events to a new handler
-* Recreating or creating new projections when requirements change
-* Keeping documentation in sync with the source code - Self documenting code
-
-Source code and documentation tend to diverge with time, and the investment needed to keep them in sync is not always sustainable. By replaying your events to capture the sequence of commands triggered by actors (people or systems) that generated them in the first place, you can recreate documents like the Event Storming sticker boards I love to use to discover business rules with my clients. 
 
 ## Contributing
 

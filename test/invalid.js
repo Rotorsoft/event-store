@@ -1,4 +1,4 @@
-const { Aggregate, IEventHandler, Err } = require('../../index')
+const { Aggregate, IEventHandler, Err } = require('../index')
 
 class InvalidAggregate extends Aggregate {
   constructor() {
@@ -9,9 +9,9 @@ class InvalidAggregate extends Aggregate {
   
   get commands () { 
     return { 
-      InvalidCommand: async () => {},
-      InvalidCommand3: async (actor, _) => {
-        if (_.a <= _.b) throw Err.precondition('a must be greater than b')
+      InvalidCommand: async context => {},
+      InvalidCommand3: async context => {
+        if (context.payload.a <= context.payload.b) throw Err.precondition('a must be greater than b')
       }
     } 
   }

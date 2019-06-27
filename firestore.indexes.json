@@ -1,0 +1,14 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "agg_type", "mode": "ASCENDING" },
+        { "fieldPath": "agg_id", "mode": "ASCENDING" },
+        { "fieldPath": "agg_version", "mode": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

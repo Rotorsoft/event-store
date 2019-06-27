@@ -39,15 +39,30 @@ class PreconditionError extends Error {
   }
 }
 
+const notImplemented = method => new NotImplementedError(method)
+const invalidArgument = arg => new InvalidArgumentError(arg)
+const missingArgument = arg => new MissingArgumentError(arg)
+const concurrency = () => new ConcurrencyError()
+const precondition = msg => new PreconditionError(msg)
+const required = (argName, argValue, argType = 'string') => {
+  if (!argValue) throw missingArgument(argName)
+  if (typeof argType === 'function') {
+    if (!(argValue instanceof argType)) throw invalidArgument(argName)
+  } else if(argType === 'array') {
+    if (!Array.isArray(argValue)) throw invalidArgument(argName)
+  } else if (typeof argValue !== argType) throw invalidArgument(argName)
+}
+
 module.exports = {
   NotImplementedError,
   InvalidArgumentError,
   MissingArgumentError,
   ConcurrencyError,
   PreconditionError,
-  notImplemented: method => new NotImplementedError(method),
-  invalidArgument: arg => new InvalidArgumentError(arg),
-  missingArgument: arg => new MissingArgumentError(arg),
-  concurrency: () => new ConcurrencyError(),
-  precondition: msg => new PreconditionError(msg)
+  notImplemented,
+  invalidArgument,
+  missingArgument,
+  concurrency,
+  precondition,
+  required
 }

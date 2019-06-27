@@ -5,8 +5,10 @@ node_js:
 
 install:
   - npm install
+  - npm install -g firebase-tools
 
 script:
+  - until firebase setup:emulators:firestore; do echo Retrying firestore setup...; done
   - npm run cover
 
 # Send coverage data to Coveralls

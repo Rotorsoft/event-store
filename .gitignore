@@ -1,5 +1,7 @@
 .vscode
-node_modules
 coverage
+node_modules
+.firebaserc
+firestore-debug.log
 package-lock.json
 deployment.txt

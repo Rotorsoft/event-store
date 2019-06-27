@@ -6,36 +6,38 @@ module.exports = class IEventStore {
   /**
    * Loads aggregate from store (can use snapshots and/or events)
    * 
-   * @param {Object} context Command context including { actor, command, aggregateType, aggregateId }
+   * @param {CommandContext} context The command context
+   * @param {String} aggregateId The aggregate id
+   * @param {Integer} expectedVersion The aggregate expected version
    * @returns {Aggregate} Loaded aggregate
    */
-  async loadAggregate (context) { throw Err.notImplemented('loadAggregate') }
+  async loadAggregate (context, aggregateId, expectedVersion = -1) { throw Err.notImplemented('loadAggregate') }
 
   /**
-   * Commits pending events to store
+   * Commits aggregate's pending events to store
    * 
-   * @param {Object} context Command context including { actor, command, aggregate, expectedVersion }
+   * @param {CommandContext} context The command context
+   * @param {Aggregate} aggregate The aggregate with pending events
+   * @param {Integer} expectedVersion The aggregate expected version
    * @returns {Array} Array of committed events
    */
-  async commitEvents (context) { throw Err.notImplemented('commitEvents') }
+  async commitEvents (context, aggregate, expectedVersion = -1) { throw Err.notImplemented('commitEvents') }
 
   /**
-   * Poll stream for new events covering handlers
+   * Polls stream for new events covering handlers
    * 
-   * @param {String} tenant tenant id
-   * @param {String} stream stream name
-   * @param {Array} handlers Array of event handlers
+   * @param {ReaderContext} context The reader context
    * @param {Integer} limit Max number of events to poll
-   * @param {Integer} timeout Timeout in milliseconds to expire lease
-   * @returns {Object} Lease object with events
+   * @returns {Lease} New lease to read stream
    */
-  async pollStream (tenant, stream, handlers, limit, timeout) { throw Err.notImplemented('pollStream') }
+  async pollStream (context, limit) { throw Err.notImplemented('pollStream') }
 
   /**
    * Commits stream cursors after successfull handling of events
    * 
-   * @param {Object} lease Lease object with updated cursors
+   * @param {ReaderContext} context The reader context
+   * @param {Lease} lease The lease with updated cursors after handling events
    * @returns {Boolean} True if any of the handlers is still behind
    */
-  async commitCursors(lease) { throw Err.notImplemented('commitCursors') }
+  async commitCursors(context, lease) { throw Err.notImplemented('commitCursors') }
 }
