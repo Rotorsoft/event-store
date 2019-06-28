@@ -25,8 +25,7 @@ steps:
 
 - script: |
     firebase setup:emulators:firestore
-    firebase list --token $(FIREBASE_CI_TOKEN)
-    firebase emulators:exec --only firestore "npm run cover-all"
+    firebase --token $(FIREBASE_CI_TOKEN) --project $(FIREBASE_PROJECT_ID) emulators:exec --only firestore "npm run cover-all"
   displayName: 'setup emulator and run tests'
 
 - script: |
