@@ -7,7 +7,7 @@ trigger:
 - master
 
 variables:
-- group: Firebase
+- group: Settings
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -30,4 +30,6 @@ steps:
 
 - script: |
     cat ./coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js
+  env:
+    COVERALLS_REPO_TOKEN: $(COVERALLS_REPO_TOKEN)
   displayName: 'send coverage data to Coveralls'
