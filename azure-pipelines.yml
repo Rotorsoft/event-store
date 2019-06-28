@@ -29,7 +29,7 @@ steps:
   displayName: 'setup emulator and login to firebase'
 
 - script: |
-    firebase emulators:exec --only firestore --project $(FIREBASE_PROJECT_ID) \"npm run cover-all\"
+    firebase emulators:exec --only firestore \"npm run cover-all\"
   displayName: 'run tests with coverage'
 
 - script: |
