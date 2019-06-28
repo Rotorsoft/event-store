@@ -26,11 +26,8 @@ steps:
 - script: |
     firebase setup:emulators:firestore
     firebase list --token $(FIREBASE_CI_TOKEN)
-  displayName: 'setup emulator and login to firebase'
-
-- script: |
     firebase emulators:exec --only firestore "npm run cover-all"
-  displayName: 'run tests with coverage'
+  displayName: 'setup emulator and run tests'
 
 - script: |
     cat ./coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js
