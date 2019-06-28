@@ -6,6 +6,9 @@
 trigger:
 - master
 
+variables:
+- group: Firebase
+
 pool:
   vmImage: 'ubuntu-latest'
 
@@ -17,5 +20,18 @@ steps:
 
 - script: |
     npm install
-    npm run build
-  displayName: 'npm install and build'
+    npm install -g firebase-tools
+  displayName: 'npm install'
+
+- script: |
+    firebase setup:emulators:firestore
+    firebase list --token $(FIREBASE_CI_TOKEN)
+  displayName: 'setup emulator and login to firebase'
+
+- script: |
+    firebase emulators:exec --only firestore --project $(FIREBASE_PROJECT_ID) \"npm run cover-all\"
+  displayName: 'run tests with coverage'
+
+- script: |
+    cat ./coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js
+  displayName: 'send coverage data to Coveralls'
