@@ -1,2 +1,8 @@
 0.1.0
 * Forked from firebase-event-store to support other cloud services
+
+0.1.1
+* Load method added to command context to load aggregates from store
+
+0.1.2
+* Fixed factory to detect firebase

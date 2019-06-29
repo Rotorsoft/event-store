@@ -1,4 +1,4 @@
-@rotorsoft/event-store [![Build Status](https://dev.azure.com/rotorsoft-org/event-store/_apis/build/status/Rotorsoft.event-store?branchName=master)](https://dev.azure.com/rotorsoft-org/event-store/_build/latest?definitionId=1&branchName=master) [![Coverage Status](https://coveralls.io/repos/github/Rotorsoft/event-store/badge.svg?branch=master)](https://coveralls.io/github/Rotorsoft/event-store?branch=master)
+@rotorsoft/event-store [![Build Status](https://dev.azure.com/rotorsoft-org/event-store/_apis/build/status/Rotorsoft.event-store?branchName=master)](https://dev.azure.com/rotorsoft-org/event-store/_build/latest?definitionId=1&branchName=master) [![Coverage Status](https://coveralls.io/repos/github/Rotorsoft/event-store/badge.svg)](https://coveralls.io/github/Rotorsoft/event-store)
 =========
 
 The original module **@rotorsoft/firestore-event-store** was a proof of concept, just trying to figure out if a low cost cloud based serverless platform could support a number of PWA apps. This is a fork at version 3.1.1, and the new goal is to try the major cloud platforms: Azure (CosmosDB store), and AWS (DynamoDB store).

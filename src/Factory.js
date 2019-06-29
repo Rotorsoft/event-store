@@ -13,7 +13,7 @@ module.exports = class Factory {
    */
   constructor (db) {
     Err.required('db', db, 'object')
-    if (db.app) {
+    if (db.constructor.name === 'Firestore') {
       this.store = new FirestoreEventStore(db)
     } else {
       throw Err.invalidArgument('db')
