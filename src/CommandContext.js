@@ -1,5 +1,6 @@
 'use strict'
 
+const Aggregate = require('./Aggregate')
 const Err = require('./Err')
 
 module.exports = class CommandContext {
@@ -27,5 +28,26 @@ module.exports = class CommandContext {
     Object.defineProperty(ctx, 'expectedVersion', { value: expectedVersion, writable: false, enumerable: true })
     Object.defineProperty(ctx, 'payload', { value: Object.freeze(payload), writable: false, enumerable: true })
     return ctx
+  }
+
+  /**
+   * Loads aggregate from store
+   * 
+   * @param {Type} aggregateType The aggregate type to load
+   * @param {String} aggregateId The aggregate id to load
+   * @param {Integer} expectedVersion The expected version or -1 to load the latest version available
+   * @returns The loaded aggregate or null
+   */
+  async load (aggregateType, aggregateId, expectedVersion = -1) {
+    Err.required('aggregateType', aggregateType, 'function')
+    Err.required('aggregateType', aggregateType.prototype, Aggregate)
+    Err.required('aggregateId', aggregateId)
+    Err.required('expectedVersion', expectedVersion, 'number')
+    
+    const ctx = new CommandContext()
+    ctx.actor = this.actor
+    ctx.aggregateType = this.aggregateType
+    Object.freeze(ctx)
+    return await this.handler._store_.loadAggregate(ctx, aggregateId, expectedVersion)
   }
 }

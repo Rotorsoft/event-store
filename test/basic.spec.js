@@ -114,4 +114,15 @@ describe('Basic without snapshots', () => {
     ctx.aggregate.aggregateId.length.should.be.at.least(10)
     ctx.aggregate.sum.should.equal(3)
   })
+
+  it('should load aggregate from context', async () => {
+    let ctx
+    ctx = await ch2.command(actor1, 'AddNumbers', { number1: 2, number2: 2 })
+    ctx = await ch2.command(actor1, 'SubtractNumbers', { aggregateId: ctx.aggregate.aggregateId, number1: 1, number2: 0 })
+    
+    const agg = await ctx.load(Calculator, ctx.aggregate.aggregateId)
+    agg.aggregateVersion.should.equal(1)
+    agg.aggregateId.should.equal(ctx.aggregate.aggregateId)
+    agg.sum.should.equal(3)
+  })
 })
