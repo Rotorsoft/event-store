@@ -7,12 +7,12 @@ const Err = require('../Err')
 const Padder = require('./Padder')
 const Lease = require('../Lease')
 
-function snapshotPath (tenant, path) {
-  return '/tenants/'.concat(tenant, path || '/snapshots')
-}
+const snapshotPath = (tenant, path) => '/tenants/'.concat(tenant, path || '/snapshots')
+const streamPath = (tenant, stream) => '/tenants/'.concat(tenant, '/streams/', stream)
 
-function streamPath (tenant, stream) {
-  return '/tenants/'.concat(tenant, '/streams/', stream)
+const getStreamVersion = async eventsRef => {
+  const snap = await eventsRef.orderBy('__name__', 'desc').limit(1).get()
+  return snap.empty ? -1 : Number.parseInt(snap.docs[0].id)
 }
 
 module.exports = class FirestoreEventStore extends IEventStore {
@@ -64,14 +64,7 @@ module.exports = class FirestoreEventStore extends IEventStore {
     const eventsRef = streamRef.collection('events')
     
     return await this.firestore.runTransaction(async transaction => {
-      const events = []
-
-      // get stream version
-      const doc = await transaction.get(streamRef)
-      const stream = doc.data()
-      let version = (stream && typeof stream.version !== 'undefined') ? stream.version : -1
-      
-      // check aggregate version is latest
+      // check that expected aggregate version is latest
       const check = await eventsRef
         .where('agg_type', '==', aggregateType.name)
         .where('agg_id', '==', aggregate.aggregateId)
@@ -79,26 +72,28 @@ module.exports = class FirestoreEventStore extends IEventStore {
         .limit(1).get()
       if (!check.empty) throw Err.concurrency()
 
-      for(let event of aggregate._uncommitted_events_) {
+      let version = await getStreamVersion(eventsRef)
+      const events = aggregate._uncommitted_events_.map(async event => {
         const eventId = Padder.pad(++version)
         const eventObject = event.toObject(context, aggregate.aggregateId, ++expectedVersion)
         await transaction.set(eventsRef.doc(eventId), eventObject)
-        events.push(eventObject)
-      }
-      await transaction.set(streamRef, { version }, { merge: true })
-      aggregate._aggregate_version_ = expectedVersion
+        return eventObject
+      })
 
+      // save snapshot
+      aggregate._aggregate_version_ = expectedVersion
       if (aggregateType.path) {
         const aggregateRef = this.firestore.collection(snapshotPath(actor.tenant, aggregateType.path)).doc(aggregate.aggregateId)
         await transaction.set(aggregateRef, aggregate.clone())
       }
+
       return events
     })
   }
 
   async pollStream (context, limit = 10) {
-    const path = streamPath(context.tenant, context.stream)
-    const streamRef = this.firestore.doc(path)
+    const streamRef = this.firestore.doc(streamPath(context.tenant, context.stream))
+    const eventsRef = streamRef.collection('events')
 
     return await this.firestore.runTransaction(async transaction => {
       const doc = await streamRef.get()
@@ -110,19 +105,18 @@ module.exports = class FirestoreEventStore extends IEventStore {
   
       const streamCursors = Object.assign({}, stream.cursors)
       const cursors = {}
-      const version = typeof stream.version !== 'undefined' ? stream.version : -1
+      const version = await getStreamVersion(eventsRef)
+
       // init cursors and get min version to poll
       const offset = context.handlers.reduce((offset, handler) => {
         const cursor = typeof streamCursors[handler.name] === 'undefined' ? -1 : streamCursors[handler.name]
         cursors[handler.name] = cursor
         return cursor < offset ? cursor : offset
-      }, 1e12-1) + 1
+      }, version) + 1
 
       // load events
-      const events = []
-      const eventsRef = this.firestore.collection(path.concat('/events'))
       const query = await eventsRef.where('__name__', '>=', Padder.pad(offset)).limit(limit).get()
-      query.forEach(doc => events.push(new Event(doc.data())))
+      const events = query.docs.map(doc => new Event(doc.data()))
 
       // save lease
       const expiresAt = Date.now() + context.timeout
@@ -133,8 +127,7 @@ module.exports = class FirestoreEventStore extends IEventStore {
 
   async commitCursors(context, lease) {
     if (!lease.events.length) return false
-    const path = streamPath(context.tenant, context.stream)
-    const streamRef = this.firestore.doc(path)
+    const streamRef = this.firestore.doc(streamPath(context.tenant, context.stream))
     
     return await this.firestore.runTransaction(async transaction => {
       const doc = await transaction.get(streamRef)
