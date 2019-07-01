@@ -1,27 +1,25 @@
 'use strict'
 
-const { startProject, endProject } = require('./setup')
-const { Factory, Actor } = require('../index')
+const { init, teardown } = require('./setup')
+const { Actor } = require('../index')
 const { Calculator, Calculator2, EventCounter } = require('./model')
 
 process.on('unhandledRejection', error => { console.log('unhandledRejection', error) })
 
 const actor1 = new Actor({ id: 'user1', name: 'user1', tenant: 'tenant1', roles: [] })
-let f1, f2, ch, sr, ch2, sr2, handlers
+let firestore, ch, sr, ch2, sr2, handlers
+
+after (async () => {
+  await teardown()
+})
 
 describe('Basic', () => {
   before (async () => {
-    console.log('starting project basic1')
-    f1 = await startProject('basic1')
-    const factory = new Factory(f1)
+    const factory = await init()
     ch = factory.createCommandHandler([Calculator])
     sr = factory.createStreamReader()
-    handlers = [new EventCounter(f1, 'counter1'), new EventCounter(f1, 'counter2')]
-  })
-
-  after (async () => {
-    console.log('ending project basic1')
-    await endProject('basic1')
+    firestore = ch._store_.firestore
+    handlers = [new EventCounter(firestore, 'counter1'), new EventCounter(firestore, 'counter2')]
   })
 
   it('should accumulate numbers to 12 on calc123', async () => {
@@ -34,7 +32,7 @@ describe('Basic', () => {
     do {
       more = await sr.poll('tenant1', 'main', handlers)
     } while (more)
-    const counter = await f1.doc('/counters/counter1').get()
+    const counter = await firestore.doc('/counters/counter1').get()
     ctx.aggregate.aggregateVersion.should.equal(2)
     ctx.aggregate.sum.should.equal(12)
     const data = counter.data()
@@ -81,17 +79,10 @@ describe('Basic', () => {
 
 describe('Basic without snapshots', () => {
   before (async () => {
-    console.log('starting project basic2')
-    f2 = await startProject('basic2')
-    const factory = new Factory(f2)
+    const factory = await init()
     ch2 = factory.createCommandHandler([Calculator2])
     sr2 = factory.createStreamReader()
-    handlers = [new EventCounter(f2, 'counter3')]
-  })
-
-  after (async () => {
-    console.log('ending project basic2')
-    await endProject('basic2')
+    handlers = [new EventCounter(ch2._store_.firestore, 'counter3')]
   })
 
   it('should load aggregate from events', async () => {

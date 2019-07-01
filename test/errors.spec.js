@@ -1,7 +1,7 @@
 'use strict'
 
-const { startProject, endProject } = require('./setup')
-const { Factory, Actor, Aggregate, CommandHandler } = require('../index')
+const { init, teardown } = require('./setup')
+const { Actor, Aggregate, CommandHandler } = require('../index')
 const FirestoreEventStore = require('../src/firestore/FirestoreEventStore')
 const { Calculator } = require('./model')
 const { InvalidAggregate } = require('./invalid')
@@ -9,17 +9,14 @@ const { InvalidAggregate } = require('./invalid')
 const actor1 = new Actor({ id: 'user1', name: 'user1', tenant: 'tenant1', roles: [] })
 let factory, ch
 
+after (async () => {
+  await teardown()
+})
+
 describe('Err handling', () => {
   before (async () => {
-    console.log('starting project err')
-    const firestore = await startProject('err')
-    factory = new Factory(firestore)
+    factory = await init()
     ch = factory.createCommandHandler([Calculator])
-  })
-
-  after (async () => {
-    console.log('ending project err')
-    await endProject('err')
   })
 
   it('should throw missing arguments actor', async () => {
@@ -115,15 +112,8 @@ describe('Err handling', () => {
 
 describe('Not implemented', () => {
   before (async () => {
-    console.log('starting project err2')
-    const firestore = await startProject('err2')
-    factory = new Factory(firestore)
+    factory = await init()
     ch = factory.createCommandHandler([Calculator])
-  })
-
-  after (async () => {
-    console.log('ending project err2')
-    await endProject('err2')
   })
 
   it('should throw not implemented loadAggregate', async () => {
@@ -155,14 +145,7 @@ describe('Not implemented', () => {
 
 describe('Err handling 2', () => { 
   before (async () => {
-    console.log('starting project err3')
-    const firestore = await startProject('err3')
-    factory = new Factory(firestore)
-  })
-
-  after (async () => {
-    console.log('ending project err3')
-    await endProject('err3')
+    factory = await init()
   })
 
   it('should throw invalid arguments: store', async () => {

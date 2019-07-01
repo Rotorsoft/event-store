@@ -142,7 +142,7 @@ class EventCounter extends IEventHandler {
   }
 }
 
-const factory = new Factory(firebase.firestore())
+const factory = new Factory(firebase, firebase.firestore())
 const ch = factory.createCommandHandler([Calculator])
 const sr = factory.createStreamReader()
 let actor = new Actor({ id: 'user1', name: 'actor 1', tenant: 'tenant1', roles: ['manager', 'user'] })
@@ -272,7 +272,7 @@ class ConsoleTracer extends ITracer {
   }
 }
 
-const factory = new Factory(firebase.firestore())
+const factory = new Factory(firebase, firebase.firestore())
 const ch = factory.createCommandHandler([Calculator], new ConsoleTracer())
 
 describe('Calculator basic operations', () => {

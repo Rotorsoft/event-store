@@ -1,7 +1,7 @@
 'use strict'
 
-const { startProject, endProject } = require('./setup')
-const { Factory, Actor, ITracer } = require('../index')
+const { init, teardown } = require('./setup')
+const { Actor, ITracer } = require('../index')
 const { Calculator, EventCounter } = require('./model')
 
 class ConsoleTracer extends ITracer {
@@ -25,19 +25,17 @@ const actor1 = new Actor({ id: 'user1', name: 'user1', tenant: 'tenant1', roles:
 const tracer = new ConsoleTracer()
 let firestore, factory, ch, sr, aggId
 
+after (async () => {
+  await teardown()
+})
+
 describe('Streams', () => {
   before (async () => {
-    console.log('starting project streams')
-    firestore = await startProject('streams')
-    factory = new Factory(firestore)
+    factory = await init()
     ch = factory.createCommandHandler([Calculator], tracer)
     sr = factory.createStreamReader(tracer)
     aggId = 'xyz-'.concat(Date.now())
-  })
-
-  after (async () => {
-    console.log('ending project streams')
-    await endProject('streams')
+    firestore = ch._store_.firestore
   })
 
   it('should catch up counter2 in current window', async () => {

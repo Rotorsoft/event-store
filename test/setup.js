@@ -1,19 +1,20 @@
 const chai = require('chai')
 const firebase = require('@firebase/testing')
+const { Factory } = require('../index')
 
 chai.should()
 
-const startProject = async (projectId) => {
-  const app = firebase.initializeAdminApp({ projectId: projectId })
+const init = async () => {
+  const app = firebase.initializeAdminApp({ projectId: 'project-'.concat(Date.now()) })
   const firestore = app.firestore()
   const tenantRef = firestore.doc('/tenants/tenant1')
   await tenantRef.set({ name: 'tenant1' }, { merge: true })
-  return firestore
+  return new Factory(firebase, firestore)
 }
 
-const endProject = async (projectId) => {
+const teardown = async () => {
   // await firebase.clearFirestoreData({ projectId: projectId })
   await Promise.all(firebase.apps().map(app => app.delete()))
 }
 
-module.exports = { startProject, endProject }
+module.exports = { init, teardown }

@@ -9,12 +9,14 @@ module.exports = class Factory {
   /**
    * Factory constructor
    * 
+   * @param {Object} provider The cloud data store provider
    * @param {Object} db The cloud data store
    */
-  constructor (db) {
+  constructor (provider, db) {
+    Err.required('provider', provider, 'object')
     Err.required('db', db, 'object')
-    if (db.constructor.name === 'Firestore') {
-      this.store = new FirestoreEventStore(db)
+    if (provider.firestore) {
+      this.store = new FirestoreEventStore(db, provider.firestore.FieldPath.documentId())
     } else {
       throw Err.invalidArgument('db')
     }

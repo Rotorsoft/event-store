@@ -1,7 +1,7 @@
 'use strict'
 
-const { startProject, endProject } = require('./setup')
-const { Factory, Actor, ITracer } = require('../index')
+const { init, teardown } = require('./setup')
+const { Actor, ITracer } = require('../index')
 const Calculator = require('./calculator')
 
 class ConsoleTracer extends ITracer {
@@ -31,17 +31,14 @@ class ConsoleTracer extends ITracer {
 const actor1 = new Actor({ id: 'user1', name: 'user1', tenant: 'tenant1', roles: [] })
 let ch, tracer = new ConsoleTracer()
 
+after (async () => {
+  await teardown()
+})
+
 describe('Calculator basic operations', () => {
   before (async () => {
-    console.log('starting project basicop')
-    const f1 = await startProject('basicop')
-    const factory = new Factory(f1)
+    const factory = await init()
     ch = factory.createCommandHandler([Calculator], tracer)
-  })
-
-  after (async () => {
-    console.log('ending project basicop')
-    await endProject('basicop')
   })
 
   async function c (calc, command, payload) {
