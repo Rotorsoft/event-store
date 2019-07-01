@@ -18,11 +18,13 @@ module.exports = class Event {
    * Converts event to object with metadata for storage
    * 
    * @param {CommandContext} context The command context where this event was created
+   * @param {Number} id The event id or event offset in the stream
    * @param {String} aggregateId The aggregate id pushing this event
-   * @param {Integer} aggregateVersion The aggregate version after this event ocurred
+   * @param {Number} aggregateVersion The aggregate version after this event ocurred
    */
-  toObject (context, aggregateId, aggregateVersion) {
+  toObject (context, id, aggregateId, aggregateVersion) {
     const object = Object.assign({}, this, {
+      id,
       agg_type: context.aggregateType.name,
       agg_id: aggregateId,
       agg_version: aggregateVersion,

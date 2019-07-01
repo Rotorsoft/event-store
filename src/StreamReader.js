@@ -31,8 +31,8 @@ module.exports = class StreamReader {
    * @param {String} tenant The tenant id
    * @param {String} stream The stream name
    * @param {Array} handlers The array of event handlers
-   * @param {Integer} limit The max number of events to poll
-   * @param {Integer} timeout The timeout in milliseconds to expire lease
+   * @param {Number} limit The max number of events to poll
+   * @param {Number} timeout The timeout in milliseconds to expire lease
    * @returns True if any of the handlers is still behind
    */
   async poll (tenant, stream, handlers, { limit = 10, timeout = 10000 } = {}) {

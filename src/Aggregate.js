@@ -74,7 +74,7 @@ module.exports = class Aggregate {
    * Event factory method used by command handlers to push new events
    * @param {String} name event name
    * @param {Object} payload event payload
-   * @param {Integer} version optional event version
+   * @param {Number} version optional event version
    */
   push (name, payload, version = 0) {
     const event = new Event({ name, version, payload })

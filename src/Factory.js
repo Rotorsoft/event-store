@@ -16,7 +16,7 @@ module.exports = class Factory {
     Err.required('provider', provider, 'object')
     Err.required('db', db, 'object')
     if (provider.firestore) {
-      this.store = new FirestoreEventStore(db, provider.firestore.FieldPath.documentId())
+      this.store = new FirestoreEventStore(db)
     } else {
       throw Err.invalidArgument('db')
     }
@@ -28,7 +28,7 @@ module.exports = class Factory {
    * 
    * @param {Array} aggregates The aggregate types supported by this handler
    * @param {ITracer} tracer The optional tracer
-   * @param {Integer} cache_size The optional cache size to cache aggregate snapshots
+   * @param {Number} cache_size The optional cache size to cache aggregate snapshots
    */
   createCommandHandler (aggregates, tracer = null, cache_size = 10) {
     return new CommandHandler(this.store, aggregates, tracer, cache_size)

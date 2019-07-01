@@ -7,6 +7,7 @@
 0.1.2
 * Fixed factory to detect firebase
 
-0.1.3
+0.1.5
 * Modified factory constructor with provider argument
-* Using FieldPath to access document id in firestore
+* Added event id to Event object to allow correct stream queries in firestore
+

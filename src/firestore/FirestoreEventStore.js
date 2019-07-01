@@ -10,17 +10,16 @@ const Lease = require('../Lease')
 const snapshotPath = (tenant, path) => '/tenants/'.concat(tenant, path || '/snapshots')
 const streamPath = (tenant, stream) => '/tenants/'.concat(tenant, '/streams/', stream)
 
+const getStreamVersion = async eventsRef => {
+  const snap = await eventsRef.orderBy('id', 'desc').limit(1).get()
+  return snap.empty ? -1 : Number.parseInt(snap.docs[0].id)
+}
+
 module.exports = class FirestoreEventStore extends IEventStore {
-  constructor (firestore, documentIdFieldPath) {
+  constructor (firestore) {
     super()
     this.firestore = firestore
-    this.documentIdFieldPath = documentIdFieldPath
     Object.freeze(this)
-  }
-
-  async _getStreamVersion (eventsRef) {
-    const snap = await eventsRef.orderBy(this.documentIdFieldPath, 'desc').limit(1).get()
-    return snap.empty ? -1 : Number.parseInt(snap.docs[0].id)
   }
 
   async loadAggregate (context, aggregateId, expectedVersion = -1) {
@@ -73,10 +72,10 @@ module.exports = class FirestoreEventStore extends IEventStore {
         .limit(1).get()
       if (!check.empty) throw Err.concurrency()
 
-      let version = await this._getStreamVersion(eventsRef)
+      let version = await getStreamVersion(eventsRef)
       const events = aggregate._uncommitted_events_.map(async event => {
         const eventId = Padder.pad(++version)
-        const eventObject = event.toObject(context, aggregate.aggregateId, ++expectedVersion)
+        const eventObject = event.toObject(context, version, aggregate.aggregateId, ++expectedVersion)
         await transaction.set(eventsRef.doc(eventId), eventObject)
         return eventObject
       })
@@ -106,7 +105,7 @@ module.exports = class FirestoreEventStore extends IEventStore {
   
       const streamCursors = Object.assign({}, stream.cursors)
       const cursors = {}
-      const version = await this._getStreamVersion(eventsRef)
+      const version = await getStreamVersion(eventsRef)
 
       // init cursors and get min version to poll
       const offset = context.handlers.reduce((offset, handler) => {
@@ -116,7 +115,7 @@ module.exports = class FirestoreEventStore extends IEventStore {
       }, version) + 1
 
       // load events
-      const query = await eventsRef.where(this.documentIdFieldPath, '>=', Padder.pad(offset)).limit(limit).get()
+      const query = await eventsRef.where('id', '>=', offset).limit(limit).get()
       const events = query.docs.map(doc => new Event(doc.data()))
 
       // save lease

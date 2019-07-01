@@ -7,7 +7,7 @@ module.exports = class ReaderContext {
    * @param {String} tenant The tenant id
    * @param {String} stream The stream name
    * @param {Array} handlers Array of event handlers
-   * @param {Integer} timeout The timeout in millis to expire lease
+   * @param {Number} timeout The timeout in millis to expire lease
    */
   constructor ({ tenant, stream, handlers, timeout }) {
     this.tenant = tenant

@@ -8,7 +8,7 @@ module.exports = class IEventStore {
    * 
    * @param {CommandContext} context The command context
    * @param {String} aggregateId The aggregate id
-   * @param {Integer} expectedVersion The aggregate expected version
+   * @param {Number} expectedVersion The aggregate expected version
    * @returns {Aggregate} Loaded aggregate
    */
   async loadAggregate (context, aggregateId, expectedVersion = -1) { throw Err.notImplemented('loadAggregate') }
@@ -18,7 +18,7 @@ module.exports = class IEventStore {
    * 
    * @param {CommandContext} context The command context
    * @param {Aggregate} aggregate The aggregate with pending events
-   * @param {Integer} expectedVersion The aggregate expected version
+   * @param {Number} expectedVersion The aggregate expected version
    * @returns {Array} Array of committed events
    */
   async commitEvents (context, aggregate, expectedVersion = -1) { throw Err.notImplemented('commitEvents') }
@@ -27,7 +27,7 @@ module.exports = class IEventStore {
    * Polls stream for new events covering handlers
    * 
    * @param {ReaderContext} context The reader context
-   * @param {Integer} limit Max number of events to poll
+   * @param {Number} limit Max number of events to poll
    * @returns {Lease} New lease to read stream
    */
   async pollStream (context, limit) { throw Err.notImplemented('pollStream') }

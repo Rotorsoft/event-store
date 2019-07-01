@@ -12,7 +12,7 @@ module.exports = class CommandContext {
    * @param {Actor} actor The actor sending this command
    * @param {String} command The command name
    * @param {String} aggregateId The aggregate id
-   * @param {Integer} expectedVersion The expected aggregate version
+   * @param {Number} expectedVersion The expected aggregate version
    * @param {Object} payload The command payload
    * @returns {CommandContext} The command context
    */
@@ -35,7 +35,7 @@ module.exports = class CommandContext {
    * 
    * @param {Type} aggregateType The aggregate type to load
    * @param {String} aggregateId The aggregate id to load
-   * @param {Integer} expectedVersion The expected version or -1 to load the latest version available
+   * @param {Number} expectedVersion The expected version or -1 to load the latest version available
    * @returns The loaded aggregate or null
    */
   async load (aggregateType, aggregateId, expectedVersion = -1) {

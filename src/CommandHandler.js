@@ -18,7 +18,7 @@ module.exports = class CommandHandler {
    * @param {IEventStore} store The event store
    * @param {Aggregate[]} aggregates Array of aggregates supported by this instance
    * @param {ITracer} tracer Tracer module
-   * @param {Integer} CACHE_SIZE Size of aggregates cache
+   * @param {Number} CACHE_SIZE Size of aggregates cache
    */
   constructor (store, aggregates, tracer = null, CACHE_SIZE = 10) {
     tracer = tracer || new ITracer()
