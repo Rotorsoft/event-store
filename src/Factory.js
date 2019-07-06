@@ -4,6 +4,7 @@ const CommandHandler = require('./CommandHandler')
 const StreamReader = require('./StreamReader')
 const Err = require('./Err')
 const FirestoreEventStore = require('./firestore/FirestoreEventStore')
+const CosmosDbEventStore = require('./cosmosdb/CosmosDbEventStore')
 
 module.exports = class Factory {
   /**
@@ -17,6 +18,8 @@ module.exports = class Factory {
     Err.required('db', db, 'object')
     if (provider.firestore) {
       this.store = new FirestoreEventStore(db)
+    } else if (provider.database) {
+      this.store = new CosmosDbEventStore(provider)
     } else {
       throw Err.invalidArgument('db')
     }

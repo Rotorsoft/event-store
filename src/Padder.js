@@ -1,6 +1,6 @@
 'use strict'
 
-const Err = require('../Err')
+const Err = require('./Err')
 
 class Padder {
   constructor (max = 1e9) {

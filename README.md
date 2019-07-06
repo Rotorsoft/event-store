@@ -149,7 +149,7 @@ let actor = new Actor({ id: 'user1', name: 'actor 1', tenant: 'tenant1', roles: 
 let context = await ch.command(actor, 'AddNumbers', { number1: 1, number2: 2, aggregateId: 'calc1' })
 context = await ch.command(actor, 'AddNumbers', { number1: 3, number2: 4, aggregateId: context.aggregateId, expectedVersion: context.aggregate.aggregateVersion })
 context = await ch.command(actor, 'SubtractNumbers', { aggregateId: 'calc1', number1: 1, number2: 1 })
-await sr.poll('tenant1', 'main', [new EventCounter(firestore)])
+await sr.poll('tenant1', 'main', 'thread1', [new EventCounter(firestore)])
 console.log('calculator', context.aggregate)
 ```
 

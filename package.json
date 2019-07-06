@@ -4,11 +4,12 @@
   "description": "Generic multi-tenant event sourcing store",
   "main": "index.js",
   "scripts": {
-    "mocha-one": "mocha ./test/basic/basic.spec.js --reporter spec --timeout 10000 || exit 0",
+    "mocha-one": "mocha ./test/basic.spec.js --reporter spec --timeout 10000 || exit 0",
     "mocha-all": "mocha ./test/**/*.spec.js --reporter spec --timeout 10000 || exit 0",
     "cover-all": "istanbul cover ./node_modules/mocha/bin/_mocha ./test/**/*.spec.js -- -R spec --timeout 10000",
-    "test": "firebase emulators:exec --only firestore \"npm run mocha-all\"",
-    "cover": "firebase emulators:exec --only firestore \"npm run cover-all\""
+    "test-firebase": "firebase emulators:exec --only firestore \"npm run mocha-all\"",
+    "cover-firebase": "firebase emulators:exec --only firestore \"npm run cover-all\"",
+    "test-azure": "set PROVIDER=azure && mocha ./test/**/*.spec.js --reporter spec --timeout 10000 || exit 0"
   },
   "repository": {
     "type": "git",
@@ -38,6 +39,7 @@
     "node": ">=8.0.0"
   },
   "devDependencies": {
+    "@azure/cosmos": "^2.1.7",
     "@firebase/testing": "^0.11.4",
     "chai": "^4.2.0",
     "coveralls": "^3.0.4",

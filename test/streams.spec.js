@@ -3,6 +3,10 @@
 const { init, teardown } = require('./setup')
 const { Actor, ITracer } = require('../index')
 const { Calculator, EventCounter } = require('./model')
+const SimpleCache = require('../src/SimpleCache')
+const Padder = require('../src/Padder')
+
+const aggId = 'xyz-'.concat(Date.now())
 
 class ConsoleTracer extends ITracer {
   constructor () {
@@ -10,20 +14,23 @@ class ConsoleTracer extends ITracer {
   }
 
   trace (fn) {
-    const { method, context, tenant, stream, events, handler, error, event, lease, offset, ...args } = fn()
+    const { method, context, tenant, stream, thread, events, handler, error, event, lease, offset, result, ...args } = fn()
     if (error) {
       console.log(`!!! ERROR: ${error}`)
     }
     // if (context) console.log(`  ${method}: ${context.command} - ${JSON.stringify(context.payload)}`)
-    if (lease) console.log(lease)
-    if (handler) console.log(`  ${handler}: handled ${event.name}.v${event.version} on ${event.agg_id}.v${event.agg_version} at ${offset}`)
+    //if (lease) console.log(lease)
+    //if (handler && event.agg_id === aggId) console.log(`  ${handler} (${thread}): ${event.agg_id}[${Padder.pad(event.agg_version)}] at ${Padder.pad(offset)} handled ${event.name}.${event.version}`)
     // if (handler) console.log(`  ${handler}: handled ${event.name}.v${event.version}, actor ${event.actor}, aggregate ${event.agg_id}.v${event.agg_version}, on tenant ${tenant} - stream ${stream}`)
+    //if (method === 'commitCursors') {
+    //  console.log(`cursors committed on ${context.thread} as ${JSON.stringify(result)}`)
+    //}
   }
 }
 
 const actor1 = new Actor({ id: 'user1', name: 'user1', tenant: 'tenant1', roles: [] })
 const tracer = new ConsoleTracer()
-let firestore, factory, ch, sr, aggId
+let cache, factory, ch, sr
 
 after (async () => {
   await teardown()
@@ -34,105 +41,136 @@ describe('Streams', () => {
     factory = await init()
     ch = factory.createCommandHandler([Calculator], tracer)
     sr = factory.createStreamReader(tracer)
-    aggId = 'xyz-'.concat(Date.now())
-    firestore = ch._store_.firestore
+    cache = new SimpleCache()
   })
 
   it('should catch up counter2 in current window', async () => {
-    const handlers1 = [new EventCounter(firestore, 'counter11')]
-    const handlers2 = [new EventCounter(firestore, 'counter11'), new EventCounter(firestore, 'counter21')]
+    const handlers1 = [new EventCounter(cache, 'counter11')]
+    const handlers2 = [new EventCounter(cache, 'counter11'), new EventCounter(cache, 'counter21')]
 
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 3, number2: 4, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 1, aggregateId: aggId })
-    await sr.poll('tenant1', 'main', handlers1, { limit: 500 })
-    let counter1 = await firestore.doc('/counters/counter11').get()
-    counter1.data().events[aggId].should.equal(3)
+    await sr.poll('tenant1', 'main', 'thread-x', handlers1, { limit: 500 })
+    let counter1 = cache.get('/counters/counter11')
+    counter1.events[aggId].should.equal(3)
     
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 3, number2: 4, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 1, aggregateId: aggId })
-    await sr.poll('tenant1', 'main', handlers2, { limit: 500 })
-    counter1 = await firestore.doc('/counters/counter11').get()
-    counter1.data().events[aggId].should.equal(6)
-    let counter2 = await firestore.doc('/counters/counter21').get()
-    counter2.data().events[aggId].should.equal(6)
+    await sr.poll('tenant1', 'main', 'thread-y', handlers2, { limit: 500 })
+
+    counter1 = cache.get('/counters/counter11')
+    counter1.events[aggId].should.equal(9) // counted 3 times by thread-x and 6 times by thread-y
+    let counter2 = cache.get('/counters/counter21')
+    counter2.events[aggId].should.equal(6)
   })
 
   it('should catch up counting with catchup window', async () => {
-    const handlers1 = [new EventCounter(firestore, 'counter11')]
-    const handlers2 = [new EventCounter(firestore, 'counter11'), new EventCounter(firestore, 'counter21'), new EventCounter(firestore, 'counter31')]
+    const handlers1 = [new EventCounter(cache, 'counter11')]
+    const handlers2 = [new EventCounter(cache, 'counter11'), new EventCounter(cache, 'counter21'), new EventCounter(cache, 'counter31')]
 
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 3, number2: 4, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 1, aggregateId: aggId })
-    await sr.poll('tenant1', 'main', handlers1, { limit: 500 })
+    await sr.poll('tenant1', 'main', 'thread-x', handlers1, { limit: 500 })
     
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 3, number2: 4, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 1, aggregateId: aggId })
-    await sr.poll('tenant1', 'main', handlers2, { limit: 5 })
-    await sr.poll('tenant1', 'main', handlers2, { limit: 500 })
+    
+    await sr.poll('tenant1', 'main', 'thread-y', handlers2, { limit: 5 })
+    await sr.poll('tenant1', 'main', 'thread-y', handlers2, { limit: 500 })
 
-    let counter1 = await firestore.doc('/counters/counter11').get()
-    let counter2 = await firestore.doc('/counters/counter21').get()
-    let counter3 = await firestore.doc('/counters/counter31').get()
-    console.log(counter1.data())
-    console.log(counter2.data())
-    console.log(counter3.data())
-    counter1.data().events[aggId].should.equal(12)
-    counter2.data().events[aggId].should.equal(12)
-    counter3.data().events[aggId].should.equal(12)
+    let counter1 = cache.get('/counters/counter11')
+    let counter2 = cache.get('/counters/counter21')
+    let counter3 = cache.get('/counters/counter31')
+    // console.log(counter1)
+    // console.log(counter2)
+    // console.log(counter3)
+    counter1.events[aggId].should.equal(21) // counted 9 times by thread-x, plus 12 times by thread-y
+    counter2.events[aggId].should.equal(12)
+    counter3.events[aggId].should.equal(12)
   })
 
   it('should catch up counting with catchup window 2', async () => {
-    const handlers1 = [new EventCounter(firestore, 'counter41')]
+    const handlers1 = [new EventCounter(cache, 'counter41')]
 
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
-    await sr.poll('tenant1', 'main', handlers1, { limit: 5 })
-    await sr.poll('tenant1', 'main', handlers1, { limit: 500 })
-    let counter4 = await firestore.doc('/counters/counter41').get()
-    console.log(counter4.data())
-    counter4.data().events[aggId].should.equal(14)
+
+    await sr.poll('tenant1', 'main', 'thread-1', handlers1, { limit: 5 })
+    await sr.poll('tenant1', 'main', 'thread-1', handlers1, { limit: 500 })
+    
+    let counter4 = cache.get('/counters/counter41')
+    //console.log(counter4)
+    counter4.events[aggId].should.equal(14)
   })
 
   it('should catch up counting in parallel', async () => {
-    const handlers1 = [new EventCounter(firestore, 'counter51')]
-    const handlers2 = [new EventCounter(firestore, 'counter61')]
+    const handlers1 = [new EventCounter(cache, 'counter51')]
+    const handlers2 = [new EventCounter(cache, 'counter61')]
 
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
     let ch2 = factory.createCommandHandler([Calculator])
     await ch2.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
-    await sr.poll('tenant1', 'main', handlers1, { limit: 7 })
-    let main = await firestore.doc('/tenants/tenant1/streams/main').get()
-    console.log(main.data())
-    await sr.poll('tenant1', 'main', handlers1, { limit: 500 })
-    main = await firestore.doc('/tenants/tenant1/streams/main').get()
-    console.log(main.data())
 
-    await sr.poll('tenant1', 'main', handlers2, { limit: 500 })
- 
-    main = await firestore.doc('/tenants/tenant1/streams/main').get()
-    console.log(main.data())
+    await sr.poll('tenant1', 'main', 'thread-1', handlers1, { limit: 7 })
+    await sr.poll('tenant1', 'main', 'thread-1', handlers1, { limit: 500 })
+    await sr.poll('tenant1', 'main', 'thread-2', handlers2, { limit: 500 })
 
-    let counter5 = await firestore.doc('/counters/counter51').get()
-    let counter6 = await firestore.doc('/counters/counter61').get()
-    console.log(counter5.data())
-    console.log(counter6.data())
-    counter5.data().events[aggId].should.equal(17)
-    counter6.data().events[aggId].should.equal(17)
+    let counter5 = cache.get('/counters/counter51')
+    let counter6 = cache.get('/counters/counter61')
+    //console.log(counter5)
+    //console.log(counter6)
+    counter5.events[aggId].should.equal(17)
+    counter6.events[aggId].should.equal(17)
   })
 
   it('should poll until done', async () => {
-    const handlers1 = [new EventCounter(firestore, 'counter71')]
+    const handlers1 = [new EventCounter(cache, 'counter71')]
 
-    await sr.poll('tenant1', 'main', handlers1, { limit: 20 })
+    await sr.poll('tenant1', 'main', 'thread-1', handlers1, { limit: 20 })
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
-    await sr.poll('tenant1', 'main', handlers1, { limit: 500 })
-    let counter7 = await firestore.doc('/counters/counter71').get()
-    console.log(counter7.data())
-    counter7.data().events[aggId].should.equal(18)
+    await sr.poll('tenant1', 'main', 'thread-1', handlers1, { limit: 500 })
+
+    let counter7 = cache.get('/counters/counter71')
+    //console.log(counter7)
+    counter7.events[aggId].should.equal(18)
+  })
+
+  it('should finish all threads', async () => {
+    const handlers = [
+      new EventCounter(cache, 'counter11'),
+      new EventCounter(cache, 'counter21'),
+      new EventCounter(cache, 'counter31'),
+      new EventCounter(cache, 'counter41'),
+      new EventCounter(cache, 'counter51'),
+      new EventCounter(cache, 'counter61'),
+      new EventCounter(cache, 'counter71'),
+    ]
+
+    await sr.poll('tenant1', 'main', 'thread-1', handlers, { limit: 600 })
+    await sr.poll('tenant1', 'main', 'thread-2', handlers, { limit: 600 })
+    await sr.poll('tenant1', 'main', 'thread-x', handlers, { limit: 600 })
+    await sr.poll('tenant1', 'main', 'thread-y', handlers, { limit: 600 })
+
+    let counter1 = cache.get('/counters/counter11')
+    let counter2 = cache.get('/counters/counter21')
+    let counter3 = cache.get('/counters/counter31')
+    let counter4 = cache.get('/counters/counter41')
+    let counter5 = cache.get('/counters/counter51')
+    let counter6 = cache.get('/counters/counter61')
+    let counter7 = cache.get('/counters/counter71')
+
+    // all counted 72 times (18 times by each thread)
+    counter1.events[aggId].should.equal(72)
+    counter2.events[aggId].should.equal(72)
+    counter3.events[aggId].should.equal(72)
+    counter4.events[aggId].should.equal(72)
+    counter5.events[aggId].should.equal(72)
+    counter6.events[aggId].should.equal(72)
+    counter7.events[aggId].should.equal(72)
   })
 })

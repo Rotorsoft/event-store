@@ -18,20 +18,18 @@ module.exports = class Event {
    * Converts event to object with metadata for storage
    * 
    * @param {CommandContext} context The command context where this event was created
-   * @param {Number} id The event id or event offset in the stream
    * @param {String} aggregateId The aggregate id pushing this event
    * @param {Number} aggregateVersion The aggregate version after this event ocurred
+   * @param {Object} props Other event properties to be persisted
    */
-  toObject (context, id, aggregateId, aggregateVersion) {
+  toObject (context, aggregateId, aggregateVersion, props = {}) {
     const object = Object.assign({}, this, {
-      id,
       agg_type: context.aggregateType.name,
       agg_id: aggregateId,
       agg_version: aggregateVersion,
       actor: context.actor.id,
-      command: context.command,
-      time: new Date().toISOString()
-    })
+      command: context.command
+    }, props)
     return Object.freeze(object)
   }
 }

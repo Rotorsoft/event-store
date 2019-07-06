@@ -47,9 +47,9 @@ class Calculator2 extends Calculator {
 }
 
 class EventCounter extends IEventHandler {
-  constructor(db, name) {
+  constructor(cache, name) {
     super()
-    this.db = db
+    this.cache = cache
     this._name_ = name
   }
 
@@ -57,11 +57,10 @@ class EventCounter extends IEventHandler {
   
   async count (tenant, event) {
     const path = '/counters/'.concat(this.name)
-    let snap = await this.db.doc(path).get()
-    let doc = snap.data() || { name: this.name }
+    let doc = this.cache.get(path) || { name: this.name }
     doc.events = doc.events || {}
     doc.events[event.agg_id] = (doc.events[event.agg_id] || 0) + 1
-    await this.db.doc(path).set(doc)
+    this.cache.set(path, doc)
   }
 
   get events () {

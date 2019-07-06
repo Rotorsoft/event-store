@@ -4,7 +4,7 @@ const IEventStore = require('../IEventStore')
 const Aggregate = require('../Aggregate')
 const Event = require('../Event')
 const Err = require('../Err')
-const Padder = require('./Padder')
+const Padder = require('../Padder')
 const Lease = require('../Lease')
 
 const snapshotPath = (tenant, path) => '/tenants/'.concat(tenant, path || '/snapshots')
@@ -13,6 +13,16 @@ const streamPath = (tenant, stream) => '/tenants/'.concat(tenant, '/streams/', s
 const getStreamVersion = async eventsRef => {
   const snap = await eventsRef.orderBy('id', 'desc').limit(1).get()
   return snap.empty ? -1 : Number.parseInt(snap.docs[0].id)
+}
+
+const logStream = async (method, context, streamRef) => {
+  console.log('')
+  console.log(`========== ${method} == ${context.tenant}-${context.stream}-${context.thread} =============`)
+  const threads = await streamRef.collection('threads').get()
+  threads.forEach(thread => {
+    console.log(`------------ ${thread.id} --------------`)
+    console.log(thread.data())
+  })
 }
 
 module.exports = class FirestoreEventStore extends IEventStore {
@@ -73,12 +83,13 @@ module.exports = class FirestoreEventStore extends IEventStore {
       if (!check.empty) throw Err.concurrency()
 
       let version = await getStreamVersion(eventsRef)
-      const events = aggregate._uncommitted_events_.map(async event => {
+      const events = []
+      for (let event of aggregate._uncommitted_events_) {
         const eventId = Padder.pad(++version)
-        const eventObject = event.toObject(context, version, aggregate.aggregateId, ++expectedVersion)
+        const eventObject = event.toObject(context, aggregate.aggregateId, ++expectedVersion, { id: version, time: new Date().toISOString() })
         await transaction.set(eventsRef.doc(eventId), eventObject)
-        return eventObject
-      })
+        events.push(eventObject)
+      }
 
       // save snapshot
       aggregate._aggregate_version_ = expectedVersion
@@ -93,50 +104,54 @@ module.exports = class FirestoreEventStore extends IEventStore {
 
   async pollStream (context, limit = 10) {
     const streamRef = this.firestore.doc(streamPath(context.tenant, context.stream))
+    const threadRef = streamRef.collection('threads').doc(context.thread)
     const eventsRef = streamRef.collection('events')
 
     return await this.firestore.runTransaction(async transaction => {
-      const doc = await streamRef.get()
-      const stream = doc.data() || {}
+      const doc = await threadRef.get()
+      const thread = doc.data() || {}
   
-      // skip if stream is currently leased
+      // skip if thread is currently leased
       const now = Date.now()
-      if (stream.lease && (stream.lease.expiresAt || 0) > now) return null
+      if (thread.lease && (thread.lease.expiresAt || 0) > now) return null
   
-      const streamCursors = Object.assign({}, stream.cursors)
+      const threadCursors = Object.assign({}, thread.cursors)
       const cursors = {}
-      const version = await getStreamVersion(eventsRef)
 
       // init cursors and get min version to poll
       const offset = context.handlers.reduce((offset, handler) => {
-        const cursor = typeof streamCursors[handler.name] === 'undefined' ? -1 : streamCursors[handler.name]
+        const cursor = typeof threadCursors[handler.name] === 'undefined' ? -1 : threadCursors[handler.name]
         cursors[handler.name] = cursor
         return cursor < offset ? cursor : offset
-      }, version) + 1
+      }, 1e9) + 1
 
       // load events
-      const query = await eventsRef.where('id', '>=', offset).limit(limit).get()
-      const events = query.docs.map(doc => new Event(doc.data()))
+      const query = await eventsRef.where('id', '>=', offset).limit(limit + 1).get()
+      if (!query.size) return null
 
       // save lease
-      const expiresAt = Date.now() + context.timeout
-      if (events.length) await transaction.set(streamRef, { lease: { token: now, version, offset, expiresAt }}, { merge: true })
-      return new Lease({ token: now, version, cursors, offset, events, expiresAt })
+      const events = query.docs.map(doc => new Event(doc.data()))
+      await transaction.set(threadRef, { lease: { token: now, offset, expiresAt: Date.now() + context.timeout }}, { merge: true })
+      return new Lease({ token: now, cursors, events, offset })
     })
   }
 
   async commitCursors(context, lease) {
     if (!lease.events.length) return false
     const streamRef = this.firestore.doc(streamPath(context.tenant, context.stream))
+    const threadRef = streamRef.collection('threads').doc(context.thread)
     
     return await this.firestore.runTransaction(async transaction => {
-      const doc = await transaction.get(streamRef)
-      const stream = doc.data() || {}
+      const doc = await transaction.get(threadRef)
+      const thread = doc.data() || {}
 
       // commit when lease matches
-      if (!(stream.lease && stream.lease.token === lease.token)) Err.concurrency()
-      await transaction.set(streamRef, { cursors: lease.cursors, lease: {}}, { merge: true })
-      return context.handlers.filter(h => lease.cursors[h.name] < lease.version).length > 0
+      if (!(thread.lease && thread.lease.token === lease.token)) Err.concurrency()
+      thread.cursors = Object.assign({}, thread.cursors, lease.cursors)
+      thread.lease = {}
+      await transaction.set(threadRef, thread, { merge: true })
+      return thread
     })
+    // await logStream('commit', context, streamRef)
   }
 }

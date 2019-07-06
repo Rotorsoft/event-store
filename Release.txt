@@ -11,3 +11,6 @@
 * Modified factory constructor with provider argument
 * Added event id to Event object to allow correct stream queries in firestore
 
+0.1.6
+* Implemented independent threads in stream readers
+* Implemented Azure CosmosDB Event store
