@@ -39,5 +39,5 @@ module.exports = class IEventStore {
    * @param {Lease} lease The lease with updated cursors after handling events
    * @returns {Boolean} True if any of the handlers is still behind
    */
-  async commitCursors(context, lease) { throw Err.notImplemented('commitCursors') }
+  async commitCursors (context, lease) { throw Err.notImplemented('commitCursors') }
 }

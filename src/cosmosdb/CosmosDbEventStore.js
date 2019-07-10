@@ -11,17 +11,13 @@ const SPROCS = {
   commitEvents: {
     id: "commitEvents",
     body: function commitEvents (events) {
-      let version = -1
       const insertEvent = async event => {
-        const id = (++version).toString()
-        event.type = 'event'
-        event.id = '000000000'.substr(0, 9 - id.length).concat(id)
         return new Promise(resolve => {
           const accept = __.createDocument(__.getSelfLink(), event, (err, item) => {
             if (err) throw err
             resolve(item)
           })
-          if (!accept) throw 'commitEvents create not accepted'
+          if (!accept) throw 'commitEvents not accepted'
         })
       }
       const insertEvents = async events => {
@@ -31,12 +27,7 @@ const SPROCS = {
         }
         return results
       }
-      const result = __.chain().filter(doc => doc.type === 'event').sortByDescending(doc => doc.id).value({ pageSize: 1 }, (err, items) => {
-        if (err) throw err
-        version = items.length ? Number.parseInt(items[0].id) : -1
-        return insertEvents(events).then(results => getContext().getResponse().setBody(results))
-      })
-      if (!result.isAccepted) throw "commitEvents not accepted"
+      return insertEvents(events).then(results => getContext().getResponse().setBody(results))
     }
   },
   startLease: {
@@ -46,7 +37,7 @@ const SPROCS = {
         if (err) throw err
 
         // skip if thread is currently leased
-        const thread = items.length ? items[0] : { id: threadId, type: 'thread' }
+        const thread = items.length ? items[0] : { id: threadId }
         const now = Date.now()
         if (thread.lease && (thread.lease.expiresAt || 0) > now) return
 
@@ -85,9 +76,13 @@ const SPROCS = {
   }
 }
 
-const getContainer = async (cosmos, tenant, stream) => {
+const EVENTS_PARTITION_KEY = { kind: "Hash", paths: ["/aid"] }
+const SNAPS_PARTITION_KEY = { kind: "Hash", paths: ["/id"] }
+const THREADS_PARTITION_KEY = { kind: "Hash", paths: ["/id"] }
+
+const getContainer = async (cosmos, tenant, id, partitionKey) => {
   const { database } = await cosmos.databases.createIfNotExists({ id: tenant })
-  const { container } = await database.containers.createIfNotExists({ id: stream, partitionKey: { kind: "Hash", paths: ["/type"] }})
+  const { container } = await database.containers.createIfNotExists({ id, partitionKey })
   return container
 }
 
@@ -111,25 +106,21 @@ module.exports = class CosmosDbEventStore extends IEventStore {
     Object.freeze(this)
   }
 
-  async loadSnapshot (container, agg_path, agg_id) {
+  async loadItem (container, id) {
     const query = {
-      query: 'SELECT * FROM c WHERE c.type = @path AND c.id = @id',
-      parameters: [
-        { name: '@path', value: agg_path },
-        { name: '@id', value: agg_id }
-      ]
+      query: 'SELECT * FROM c WHERE c.id = @id',
+      parameters: [{ name: '@id', value: id }]
     }
     const { result } = await container.items.query(query).toArray()
-    return result.length ? result[0].payload : null
+    return result.length ? result[0] : {}
   }
 
-  async loadEvents (container, agg_type, agg_id, agg_version) {
+  async loadEvents (container, aggregateId, offset) {
     const query = {
-      query: 'SELECT * FROM c WHERE c.type = "event" AND c.agg_type = @agg_type AND c.agg_id = @agg_id AND c.agg_version > @agg_version ORDER BY c.id',
+      query: 'SELECT * FROM c WHERE c.aid = @aid AND c.id > @offset ORDER BY c.id',
       parameters: [
-        { name: '@agg_type', value: agg_type },
-        { name: '@agg_id', value: agg_id },
-        { name: '@agg_version', value: agg_version }
+        { name: '@aid', value: aggregateId },
+        { name: '@offset', value: offset }
       ]
     }
     const { result } = await container.items.query(query).toArray()
@@ -139,29 +130,24 @@ module.exports = class CosmosDbEventStore extends IEventStore {
   async loadAggregate (context, aggregateId, expectedVersion = -1) {
     const { aggregateType } = context
     if (aggregateId) {
-      const container = await getContainer(this.cosmos, context.actor.tenant, aggregateType.stream)
+      const e_container = await getContainer(this.cosmos, context.actor.tenant, 'events', EVENTS_PARTITION_KEY)
+      const s_container = aggregateType.snapshot ? await getContainer(this.cosmos, context.actor.tenant, 'snapshots', SNAPS_PARTITION_KEY) : null
 
-      // load snapshot if path provided
-      const doc = aggregateType.path ? await this.loadSnapshot(container, aggregateType.path, aggregateId) : null
-      const aggregate = Aggregate.create(aggregateType, doc || { _aggregate_id_: aggregateId, _aggregate_version_: -1 })
+      // load snapshot
+      const doc = s_container ? await this.loadItem(s_container, aggregateId) : {}
+      const aggregate = Aggregate.create(aggregateType, doc.payload || { _aggregate_id_: aggregateId, _aggregate_version_: -1 })
       
       // load events that ocurred after snapshot was taken
       while (expectedVersion === -1 || aggregate.aggregateVersion < expectedVersion) {
-        const eventItems = await this.loadEvents(container, aggregateType.name, aggregateId, aggregate.aggregateVersion)
-        
-        // replay events
-        eventItems.forEach(eventItem => {
-          const event = new Event(eventItem)
-          aggregate.events[eventItem.name](event)
-          aggregate._aggregate_version_++
-        })
-
-        if (!eventItems.length) break
+        const offset = Padder.pad(aggregate.aggregateVersion)
+        const items = await this.loadEvents(e_container, aggregateId, offset)
+        items.forEach(item => aggregate._replay(new Event(item)))
+        if (!items.length || aggregate.aggregateVersion === expectedVersion) break
       }
       return aggregate
     }
     // return new aggregate with auto generated id
-    return Aggregate.create(aggregateType, { _aggregate_id_: Date.now().toString() })
+    return Aggregate.create(aggregateType, { _aggregate_id_: aggregateType.name.concat('-', Date.now().toString()) })
   }
 
   async commitEvents (context, aggregate, expectedVersion = -1) {
@@ -169,49 +155,46 @@ module.exports = class CosmosDbEventStore extends IEventStore {
     if (aggregate.aggregateVersion !== expectedVersion) throw Err.concurrency()
 
     // commit events
-    const events = aggregate._uncommitted_events_.map(event => event.toObject(context, aggregate.aggregateId, ++expectedVersion, {}))
-    const container = await getContainer(this.cosmos, context.actor.tenant, aggregateType.stream)
-    const sp = await getSproc(container, SPROCS.commitEvents)
-    const { body } = await sp.execute([events], { partitionKey: 'event' })
+    const stamps = aggregate._uncommitted_events_.map(event => event.stamp(Padder.pad(++expectedVersion), aggregate.aggregateId, context))
+    const e_container = await getContainer(this.cosmos, context.actor.tenant, 'events', EVENTS_PARTITION_KEY)
+    const s_container = aggregateType.snapshot ? await getContainer(this.cosmos, context.actor.tenant, 'snapshots', SNAPS_PARTITION_KEY) : null
+
+    const sp = await getSproc(e_container, SPROCS.commitEvents)
+    try {
+      const { body } = await sp.execute([stamps], { partitionKey: aggregate.aggregateId })
+    } catch (error) {
+      throw Err.concurrency()
+    }
     aggregate._aggregate_version_ = expectedVersion
 
     // save snapshot
-    if (aggregateType.path) {
+    if (s_container) {
       const snapshot = {
         id: aggregate._aggregate_id_,
-        type: aggregateType.path,
+        type: aggregateType.name,
         payload: aggregate.clone()
       }
-      await container.items.upsert(snapshot)
+      await s_container.items.upsert(snapshot)
     }
 
-    return events
-  }
-
-  async loadThread (container, thread) {
-    const query = {
-      query: 'SELECT * FROM c WHERE c.type = "thread" AND c.id = @id',
-      parameters: [{ name: '@id', value: thread }]
-    }
-    const { result } = await container.items.query(query).toArray()
-    return result.length ? result[0] : {}
+    return stamps
   }
 
   async pollEvents (container, offset, limit) {
     const query = {
-      query: 'SELECT TOP @limit * FROM c WHERE c.type = "event" and c.id >= @offset ORDER BY c.id',
+      query: 'SELECT TOP @limit * FROM c WHERE c.gid > @offset ORDER BY c.gid',
       parameters: [
-        { name: '@offset', value: Padder.pad(offset) },
+        { name: '@offset', value: offset },
         { name: '@limit', value: limit }
       ]
     }
-    const { result } = await container.items.query(query).toArray()
+    const { result } = await container.items.query(query, { enableCrossPartitionQuery: true }).toArray()
     return result
   }
 
   async pollStream (context, limit = 10) {
-    const container = await getContainer(this.cosmos, context.tenant, context.stream)
-    const thread = await this.loadThread(container, context.thread)
+    const t_container = await getContainer(this.cosmos, context.tenant, 'threads', THREADS_PARTITION_KEY)
+    const thread = await this.loadItem(t_container, context.thread)
 
     // skip if thread is currently leased
     const now = Date.now()
@@ -221,26 +204,27 @@ module.exports = class CosmosDbEventStore extends IEventStore {
     const threadCursors = Object.assign({}, thread.cursors)
     const cursors = {}
     const offset = context.handlers.reduce((offset, handler) => {
-      const cursor = typeof threadCursors[handler.name] === 'undefined' ? -1 : threadCursors[handler.name]
+      const cursor = threadCursors[handler.name] || '0'
       cursors[handler.name] = cursor
       return cursor < offset ? cursor : offset
-    }, 1e9) + 1
+    }, 'END')
 
     // load events
-    const events = await this.pollEvents(container, offset, limit + 1)
+    const e_container = await getContainer(this.cosmos, context.tenant, 'events', EVENTS_PARTITION_KEY)
+    const events = await this.pollEvents(e_container, offset, limit + 1)
     if (!events.length) return null
 
     // start lease
-    const sp = await getSproc(container, SPROCS.startLease)
-    const { body } = await sp.execute([context.thread, offset, context.timeout], { partitionKey: 'thread' })
-    return new Lease({ token: body.lease.token, cursors, events, offset })
+    const sp = await getSproc(t_container, SPROCS.startLease)
+    const { body } = await sp.execute([context.thread, offset, context.timeout], { partitionKey: context.thread })
+    return new Lease({ token: body.lease.token, cursors, events: events, offset })
   }
 
   async commitCursors(context, lease) {
     if (!lease.events.length) return false
-    const container = await getContainer(this.cosmos, context.tenant, context.stream)
-    const sp = await getSproc(container, SPROCS.endLease)
-    const { body } = await sp.execute([context.thread, lease], { partitionKey: 'thread' })
+    const t_container = await getContainer(this.cosmos, context.tenant, 'threads', THREADS_PARTITION_KEY)
+    const sp = await getSproc(t_container, SPROCS.endLease)
+    const { body } = await sp.execute([context.thread, lease], { partitionKey: context.thread })
     return body
   }
 }

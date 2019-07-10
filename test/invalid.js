@@ -5,8 +5,6 @@ class InvalidAggregate extends Aggregate {
     super()
   }
 
-  static get path () { return '/invalids' }
-  
   get commands () { 
     return { 
       InvalidCommand: async context => {},

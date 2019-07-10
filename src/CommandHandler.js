@@ -57,9 +57,8 @@ module.exports = class CommandHandler {
     this._tracer_.trace(() => ({ method: 'command', context }))
 
     // try loading aggregate from cache first
-    const cacheKey = context.aggregateType.name.concat('.', aggregateId)
     if (aggregateId && expectedVersion >= 0) {
-      const copy = this._cache_.get(cacheKey)
+      const copy = this._cache_.get(aggregateId)
       if (copy) {
         context.aggregate = Aggregate.create(context.aggregateType, copy)
         context.cached = true
@@ -85,7 +84,7 @@ module.exports = class CommandHandler {
       this._tracer_.trace(() => ({ method: 'commitEvents', events, context }))
 
       // cache aggregate
-      this._cache_.set(cacheKey, context.aggregate.clone())
+      this._cache_.set(context.aggregate.aggregateId, context.aggregate.clone())
     }
 
     return context

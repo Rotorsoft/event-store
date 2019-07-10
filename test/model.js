@@ -13,8 +13,6 @@ class Calculator extends Aggregate {
     this.sum = 0
   }
 
-  static get path () { return '/calculators' }
-
   get commands () { 
     return { 
       AddNumbers: async context => {
@@ -43,7 +41,7 @@ class Calculator extends Aggregate {
 }
 
 class Calculator2 extends Calculator {
-  static get path () { return '' }
+  static get snapshot () { return false }
 }
 
 class EventCounter extends IEventHandler {
@@ -59,7 +57,7 @@ class EventCounter extends IEventHandler {
     const path = '/counters/'.concat(this.name)
     let doc = this.cache.get(path) || { name: this.name }
     doc.events = doc.events || {}
-    doc.events[event.agg_id] = (doc.events[event.agg_id] || 0) + 1
+    doc.events[event.aid] = (doc.events[event.aid] || 0) + 1
     this.cache.set(path, doc)
   }
 

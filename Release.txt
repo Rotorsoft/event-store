@@ -14,3 +14,7 @@
 0.1.6
 * Implemented independent threads in stream readers
 * Implemented Azure CosmosDB Event store
+
+0.2.0
+* Modified store structure for optimal use of data partitions. Not following recommended approach of one stream per aggregate instance
+* For global event log replays (used by StreamReader), a new "gid" property is saved per event with a timestap used for temporal ordering

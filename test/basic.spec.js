@@ -27,11 +27,11 @@ describe('Basic', () => {
     let ctx
     let aggId = 'calc123-'.concat(Date.now())
     ctx = await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
-    ctx = await ch.command(actor1, 'AddNumbers', { number1: 3, number2: 4, aggregateId: ctx.aggregateId })
-    ctx = await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 1, aggregateId: ctx.aggregateId })
+    ctx = await ch.command(actor1, 'AddNumbers', { number1: 3, number2: 4, aggregateId: ctx.aggregate.aggregateId })
+    ctx = await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 1, aggregateId: ctx.aggregate.aggregateId })
     let more = true
     do {
-      more = await sr.poll('tenant1', 'main', 'thread1', handlers)
+      more = await sr.poll('tenant1', 'thread1', handlers)
     } while (more)
     const counter = cache.get('/counters/counter1')
     ctx.aggregate.aggregateVersion.should.equal(2)
@@ -45,7 +45,7 @@ describe('Basic', () => {
     let ctx 
     ctx = await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2 })
     ctx = await ch.command(actor1, 'AddNumbers', { aggregateId: ctx.aggregate.aggregateId, expectedVersion: ctx.aggregate.aggregateVersion, number1: 3, number2: 4 })
-    await sr.poll('tenant1', 'main', 'thread1', handlers)
+    await sr.poll('tenant1', 'thread1', handlers)
     ctx.aggregate.aggregateVersion.should.equal(1)
     ctx.aggregate.sum.should.equal(10)
   })
@@ -53,11 +53,11 @@ describe('Basic', () => {
   it('should throw concurrency error', async () => {
     try {
       let ctx
-      const aggId = 'calc1-'.concat(Date.now())
+      const aggId = 'calc-err-'.concat(Date.now())
       ctx = await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
       ctx = await ch.command(actor1, 'AddNumbers', { number1: 3, number2: 4, aggregateId: ctx.aggregate.aggregateId, expectedVersion: ctx.aggregate.aggregateVersion })
       ctx = await ch.command(actor1, 'AddNumbers', { number1: 3, number2: 4, aggregateId: ctx.aggregate.aggregateId, expectedVersion: 0 })
-      await sr.poll('tenant1', 'main', 'thread1', handlers)
+      await sr.poll('tenant1', 'thread1', handlers)
     }
     catch(error) {
       error.name.should.be.equal('ConcurrencyError')
@@ -71,7 +71,7 @@ describe('Basic', () => {
     for (let i = 0; i < iters; i++) {
       ctx = await ch.command(actor1, 'AddNumbers', { number1: 0, number2: 1, aggregateId: ctx.aggregate.aggregateId, expectedVersion: ctx.aggregate.aggregateVersion })
     }
-    await sr.poll('tenant1', 'main', 'thread1', handlers)
+    await sr.poll('tenant1', 'thread1', handlers)
     ctx.aggregate.aggregateVersion.should.equal(iters)
     ctx.aggregate.sum.should.equal(iters + 1)
   })
@@ -87,8 +87,8 @@ describe('Basic without snapshots', () => {
     let ctx
     const aggId = 'calc100-'.concat(Date.now())
     ctx = await ch2.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
-    ctx = await ch2.command(actor1, 'AddNumbers', { number1: 3, number2: 4, aggregateId: ctx.aggregateId, expectedVersion: ctx.aggregate.aggregateVersion })
-    ctx = await ch2.command(actor1, 'AddNumbers', { number1: 1, number2: 1, aggregateId: ctx.aggregateId, expectedVersion: ctx.aggregate.aggregateVersion })
+    ctx = await ch2.command(actor1, 'AddNumbers', { number1: 3, number2: 4, aggregateId: ctx.aggregate.aggregateId, expectedVersion: ctx.aggregate.aggregateVersion })
+    ctx = await ch2.command(actor1, 'AddNumbers', { number1: 1, number2: 1, aggregateId: ctx.aggregate.aggregateId, expectedVersion: ctx.aggregate.aggregateVersion })
     ctx.aggregate.aggregateVersion.should.equal(2)
     ctx.aggregate.sum.should.equal(12)
   })
@@ -106,7 +106,7 @@ describe('Basic without snapshots', () => {
     let ctx
     ctx = await ch2.command(actor1, 'AddNumbers', { number1: 2, number2: 2 })
     ctx = await ch2.command(actor1, 'SubtractNumbers', { aggregateId: ctx.aggregate.aggregateId, number1: 1, number2: 0 })
-    const agg = await ctx.load(Calculator, ctx.aggregate.aggregateId)
+    const agg = await ctx.load(Calculator2, ctx.aggregate.aggregateId)
     agg.aggregateVersion.should.equal(1)
     agg.aggregateId.should.equal(ctx.aggregate.aggregateId)
     agg.sum.should.equal(3)

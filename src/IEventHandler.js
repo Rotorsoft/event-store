@@ -10,11 +10,6 @@ module.exports = class IEventHandler {
   get name () { return '' }
 
   /**
-   * Stream name where events are published
-   */
-  get stream() { return 'main' }
-
-  /**
    * Object map of async event handlers
    * 
    * Example:
@@ -36,9 +31,14 @@ module.exports = class IEventHandler {
    * 
    * @param {String} tenant The tenant id
    * @param {Event} event The event
+   * @returns True if succesfully handled
    */
   async handle (tenant, event) {
     const eh = this.events[event.name]
-    if (eh) await eh(tenant, event)
+    if (eh) {
+      await eh(tenant, event)
+      return true
+    }
+    return false
   }
 }

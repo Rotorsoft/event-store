@@ -14,17 +14,20 @@ class ConsoleTracer extends ITracer {
   }
 
   trace (fn) {
-    const { method, context, tenant, stream, thread, events, handler, error, event, lease, offset, result, ...args } = fn()
+    const { method, context, tenant, thread, events, handler, error, event, lease, result, ...args } = fn()
     if (error) {
       console.log(`!!! ERROR: ${error}`)
     }
     // if (context) console.log(`  ${method}: ${context.command} - ${JSON.stringify(context.payload)}`)
     //if (lease) console.log(lease)
-    //if (handler && event.agg_id === aggId) console.log(`  ${handler} (${thread}): ${event.agg_id}[${Padder.pad(event.agg_version)}] at ${Padder.pad(offset)} handled ${event.name}.${event.version}`)
-    // if (handler) console.log(`  ${handler}: handled ${event.name}.v${event.version}, actor ${event.actor}, aggregate ${event.agg_id}.v${event.agg_version}, on tenant ${tenant} - stream ${stream}`)
-    //if (method === 'commitCursors') {
+    // if (handler && event.aid === aggId) console.log(`  ${handler} (${thread}): ${event.id} at ${Padder.pad(event.offset)} handled ${event.name}.${event.version}`)
+    // // if (handler) console.log(`  ${handler}: handled ${event.name}.v${event.version}, actor ${event.actor}, aggregate ${event.aid}, on tenant ${tenant}`)
+    // if (method === 'commitCursors') {
     //  console.log(`cursors committed on ${context.thread} as ${JSON.stringify(result)}`)
-    //}
+    // }
+    // if (method === 'commitEvents') {
+    //   console.log(events)
+    // }
   }
 }
 
@@ -51,14 +54,14 @@ describe('Streams', () => {
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 3, number2: 4, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 1, aggregateId: aggId })
-    await sr.poll('tenant1', 'main', 'thread-x', handlers1, { limit: 500 })
+    await sr.poll('tenant1', 'thread-x', handlers1, { limit: 500 })
     let counter1 = cache.get('/counters/counter11')
     counter1.events[aggId].should.equal(3)
     
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 3, number2: 4, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 1, aggregateId: aggId })
-    await sr.poll('tenant1', 'main', 'thread-y', handlers2, { limit: 500 })
+    await sr.poll('tenant1', 'thread-y', handlers2, { limit: 500 })
 
     counter1 = cache.get('/counters/counter11')
     counter1.events[aggId].should.equal(9) // counted 3 times by thread-x and 6 times by thread-y
@@ -73,14 +76,13 @@ describe('Streams', () => {
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 3, number2: 4, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 1, aggregateId: aggId })
-    await sr.poll('tenant1', 'main', 'thread-x', handlers1, { limit: 500 })
+    await sr.poll('tenant1', 'thread-x', handlers1, { limit: 500 })
     
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 3, number2: 4, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 1, aggregateId: aggId })
     
-    await sr.poll('tenant1', 'main', 'thread-y', handlers2, { limit: 5 })
-    await sr.poll('tenant1', 'main', 'thread-y', handlers2, { limit: 500 })
+    await sr.poll('tenant1', 'thread-y', handlers2, { limit: 500 })
 
     let counter1 = cache.get('/counters/counter11')
     let counter2 = cache.get('/counters/counter21')
@@ -99,8 +101,7 @@ describe('Streams', () => {
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
 
-    await sr.poll('tenant1', 'main', 'thread-1', handlers1, { limit: 5 })
-    await sr.poll('tenant1', 'main', 'thread-1', handlers1, { limit: 500 })
+    await sr.poll('tenant1', 'thread-1', handlers1, { limit: 500 })
     
     let counter4 = cache.get('/counters/counter41')
     //console.log(counter4)
@@ -116,9 +117,8 @@ describe('Streams', () => {
     await ch2.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
 
-    await sr.poll('tenant1', 'main', 'thread-1', handlers1, { limit: 7 })
-    await sr.poll('tenant1', 'main', 'thread-1', handlers1, { limit: 500 })
-    await sr.poll('tenant1', 'main', 'thread-2', handlers2, { limit: 500 })
+    await sr.poll('tenant1', 'thread-1', handlers1, { limit: 500 })
+    await sr.poll('tenant1', 'thread-2', handlers2, { limit: 500 })
 
     let counter5 = cache.get('/counters/counter51')
     let counter6 = cache.get('/counters/counter61')
@@ -131,9 +131,9 @@ describe('Streams', () => {
   it('should poll until done', async () => {
     const handlers1 = [new EventCounter(cache, 'counter71')]
 
-    await sr.poll('tenant1', 'main', 'thread-1', handlers1, { limit: 20 })
+    await sr.poll('tenant1', 'thread-1', handlers1, { limit: 20 })
     await ch.command(actor1, 'AddNumbers', { number1: 1, number2: 2, aggregateId: aggId })
-    await sr.poll('tenant1', 'main', 'thread-1', handlers1, { limit: 500 })
+    await sr.poll('tenant1', 'thread-1', handlers1, { limit: 500 })
 
     let counter7 = cache.get('/counters/counter71')
     //console.log(counter7)
@@ -151,10 +151,10 @@ describe('Streams', () => {
       new EventCounter(cache, 'counter71'),
     ]
 
-    await sr.poll('tenant1', 'main', 'thread-1', handlers, { limit: 600 })
-    await sr.poll('tenant1', 'main', 'thread-2', handlers, { limit: 600 })
-    await sr.poll('tenant1', 'main', 'thread-x', handlers, { limit: 600 })
-    await sr.poll('tenant1', 'main', 'thread-y', handlers, { limit: 600 })
+    await sr.poll('tenant1', 'thread-1', handlers, { limit: 600 })
+    await sr.poll('tenant1', 'thread-2', handlers, { limit: 600 })
+    await sr.poll('tenant1', 'thread-x', handlers, { limit: 600 })
+    await sr.poll('tenant1', 'thread-y', handlers, { limit: 600 })
 
     let counter1 = cache.get('/counters/counter11')
     let counter2 = cache.get('/counters/counter21')

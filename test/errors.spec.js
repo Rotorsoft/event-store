@@ -205,7 +205,6 @@ describe('Err handling 2', () => {
     try {
       class A extends Aggregate {
         constructor() { super() }
-        static get path () { return '/invalids' }
         get commands () { return { C: async () => { this.push('a', 'E', {}) } } }
       }
       const ch = factory.createCommandHandler([A])
@@ -221,7 +220,6 @@ describe('Err handling 2', () => {
     try {
       class A extends Aggregate {
         constructor() { super() }
-        static get path () { return '/invalids' }
         get events () { return { E: () => {} } }
       }
       const ch = factory.createCommandHandler([A])

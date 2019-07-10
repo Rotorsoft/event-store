@@ -17,19 +17,19 @@ module.exports = class Event {
   /**
    * Converts event to object with metadata for storage
    * 
+   * @param {String} id The padded stream id (aggregate version)
+   * @param {String} aid The aggregate id (partition key)
    * @param {CommandContext} context The command context where this event was created
-   * @param {String} aggregateId The aggregate id pushing this event
-   * @param {Number} aggregateVersion The aggregate version after this event ocurred
-   * @param {Object} props Other event properties to be persisted
    */
-  toObject (context, aggregateId, aggregateVersion, props = {}) {
+  stamp (id, aid, context) {
     const object = Object.assign({}, this, {
-      agg_type: context.aggregateType.name,
-      agg_id: aggregateId,
-      agg_version: aggregateVersion,
+      id,
+      aid,
+      gid: Date.now().toString().concat('.', id), // global position id used to replay all events in order
+      type: context.aggregateType.name,
       actor: context.actor.id,
       command: context.command
-    }, props)
+    })
     return Object.freeze(object)
   }
 }

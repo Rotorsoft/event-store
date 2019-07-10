@@ -23,8 +23,6 @@ module.exports = class Calculator extends Aggregate {
     this.result = 0
   }
 
-  static get path () { return '/calculators' }
-
   get commands () { 
     return { 
       PressDigit: async context => {
