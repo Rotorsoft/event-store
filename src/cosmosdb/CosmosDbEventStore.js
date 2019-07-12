@@ -4,7 +4,7 @@ const IEventStore = require('../IEventStore')
 const Aggregate = require('../Aggregate')
 const Event = require('../Event')
 const Err = require('../Err')
-const Padder = require('../Padder')
+const { pad } = require('../Padder')
 const Lease = require('../Lease')
 
 const SPROCS = {
@@ -139,10 +139,10 @@ module.exports = class CosmosDbEventStore extends IEventStore {
       
       // load events that ocurred after snapshot was taken
       while (expectedVersion === -1 || aggregate.aggregateVersion < expectedVersion) {
-        const offset = Padder.pad(aggregate.aggregateVersion)
-        const items = await this.loadEvents(e_container, aggregateId, offset)
+        const items = await this.loadEvents(e_container, aggregateId, pad(aggregate.aggregateVersion))
+        if (!items.length) break
         items.forEach(item => aggregate._replay(new Event(item)))
-        if (!items.length || aggregate.aggregateVersion === expectedVersion) break
+        expectedVersion = Math.max(expectedVersion, aggregate.aggregateVersion)
       }
       return aggregate
     }
@@ -155,7 +155,7 @@ module.exports = class CosmosDbEventStore extends IEventStore {
     if (aggregate.aggregateVersion !== expectedVersion) throw Err.concurrency()
 
     // commit events
-    const stamps = aggregate._uncommitted_events_.map(event => event.stamp(Padder.pad(++expectedVersion), aggregate.aggregateId, context))
+    const stamps = aggregate._uncommitted_events_.map(event => event.stamp(pad(++expectedVersion), aggregate.aggregateId, context))
     const e_container = await getContainer(this.cosmos, context.actor.tenant, 'events', EVENTS_PARTITION_KEY)
     const s_container = aggregateType.snapshot ? await getContainer(this.cosmos, context.actor.tenant, 'snapshots', SNAPS_PARTITION_KEY) : null
 

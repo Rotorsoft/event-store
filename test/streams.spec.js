@@ -4,7 +4,6 @@ const { init, teardown } = require('./setup')
 const { Actor, ITracer } = require('../index')
 const { Calculator, EventCounter } = require('./model')
 const SimpleCache = require('../src/SimpleCache')
-const Padder = require('../src/Padder')
 
 const aggId = 'xyz-'.concat(Date.now())
 
@@ -20,7 +19,7 @@ class ConsoleTracer extends ITracer {
     }
     // if (context) console.log(`  ${method}: ${context.command} - ${JSON.stringify(context.payload)}`)
     //if (lease) console.log(lease)
-    // if (handler && event.aid === aggId) console.log(`  ${handler} (${thread}): ${event.id} at ${Padder.pad(event.offset)} handled ${event.name}.${event.version}`)
+    // if (handler && event.aid === aggId) console.log(`  ${handler} (${thread}): ${event.id} at ${event.gid} handled ${event.name}.${event.version}`)
     // // if (handler) console.log(`  ${handler}: handled ${event.name}.v${event.version}, actor ${event.actor}, aggregate ${event.aid}, on tenant ${tenant}`)
     // if (method === 'commitCursors') {
     //  console.log(`cursors committed on ${context.thread} as ${JSON.stringify(result)}`)

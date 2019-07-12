@@ -18,3 +18,6 @@
 0.2.0
 * Modified store structure for optimal use of data partitions. Not following recommended approach of one stream per aggregate instance
 * For global event log replays (used by StreamReader), a new "gid" property is saved per event with a timestap used for temporal ordering
+
+0.2.1
+* Set max padded event id per aggregate to 1 million

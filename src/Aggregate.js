@@ -1,7 +1,7 @@
 'use strict'
 
 const Event = require('./Event')
-const Padder = require('./Padder')
+const { unpad } = require('./Padder')
 const Err = require('./Err')
 
 /**
@@ -84,7 +84,7 @@ module.exports = class Aggregate {
    */
   _replay (event) {
     this.events[event.name](event)
-    this._aggregate_version_ = Padder.unpad(event.id)
+    this._aggregate_version_ = unpad(event.id)
   }
 
   /**

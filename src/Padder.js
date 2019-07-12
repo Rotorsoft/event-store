@@ -1,21 +1,12 @@
 'use strict'
 
-const Err = require('./Err')
+const PADS = ['00000', '0000', '000', '00', '0', '']
 
-class Padder {
-  constructor (max = 1e9) {
-    if (max > 1e9) throw Err.invalidArgument('max')
-    this._len = (max - 1).toString().length
-    this._pad = '000000000'.substr(0, this._len)
-    Object.freeze(this)
-  }
-
-  pad (number) {
-    const s = number.toString()
-    return this._pad.substr(0, this._len - s.length).concat(s)
-  }
-
-  unpad (str) { return Number.parseInt(str.slice(-this._len)) }
+const pad = int => {
+  const s = int.toString()
+  return PADS[s.length - 1].concat(s)
 }
 
-module.exports = new Padder()
+const unpad = str => Number.parseInt(str.slice(-6))
+
+module.exports = { pad, unpad }

@@ -4,7 +4,7 @@ const IEventStore = require('../IEventStore')
 const Aggregate = require('../Aggregate')
 const Event = require('../Event')
 const Err = require('../Err')
-const Padder = require('../Padder')
+const { pad } = require('../Padder')
 const Lease = require('../Lease')
 
 const eventsPath = tenant => '/tenants/'.concat(tenant, '/events')
@@ -28,12 +28,11 @@ module.exports = class FirestoreEventStore extends IEventStore {
       const eventsRef = this.firestore.collection(eventsPath(actor.tenant))
       
       // load events that ocurred after snapshot was taken
-      const PAGE = 1000
       while (expectedVersion === -1 || aggregate.aggregateVersion < expectedVersion) {
-        const offset = Padder.pad(aggregate.aggregateVersion)
-        const events = await eventsRef.where('aid', '==', aggregateId).where('id', '>', offset).limit(PAGE).get()
+        const events = await eventsRef.where('aid', '==', aggregateId).where('id', '>', pad(aggregate.aggregateVersion)).get()
+        if (!events.size) break
         events.forEach(doc => aggregate._replay(new Event(doc.data())))
-        if (events.size < PAGE || aggregate.aggregateVersion === expectedVersion) break
+        expectedVersion = Math.max(expectedVersion, aggregate.aggregateVersion)
       }
       return aggregate
     }
@@ -50,8 +49,8 @@ module.exports = class FirestoreEventStore extends IEventStore {
       return await this.firestore.runTransaction(async transaction => {
         const events = []
         for (let event of aggregate._uncommitted_events_) {
-          const id = Padder.pad(++expectedVersion)
-          const docid = aggregate.aggregateId.concat('@', id)
+          const id = pad(++expectedVersion)
+          const docid = aggregate.aggregateId.concat('.', id)
           const stamp = event.stamp(id, aggregate.aggregateId, context)
           await transaction.set(eventsRef.doc(docid), stamp)
           events.push(stamp)
