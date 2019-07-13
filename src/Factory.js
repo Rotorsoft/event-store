@@ -10,16 +10,14 @@ module.exports = class Factory {
   /**
    * Factory constructor
    * 
-   * @param {Object} provider The cloud data store provider
    * @param {Object} db The cloud data store
    */
-  constructor (provider, db) {
-    Err.required('provider', provider, 'object')
+  constructor (db) {
     Err.required('db', db, 'object')
-    if (provider.firestore) {
+    if (db.collection) {
       this.store = new FirestoreEventStore(db)
-    } else if (provider.database) {
-      this.store = new CosmosDbEventStore(provider)
+    } else if (db.database) {
+      this.store = new CosmosDbEventStore(db)
     } else {
       throw Err.invalidArgument('db')
     }

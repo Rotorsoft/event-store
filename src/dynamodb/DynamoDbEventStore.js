@@ -2,7 +2,6 @@
 
 const IEventStore = require('../IEventStore')
 const Aggregate = require('../Aggregate')
-const Event = require('../Event')
 const Err = require('../Err')
 const Lease = require('../Lease')
 

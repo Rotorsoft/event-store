@@ -6,13 +6,13 @@ module.exports = class Lease {
    * 
    * @param {Number} token The token identifying this lease
    * @param {Object} cursors The map of handled offsets in the stream
-   * @param {Array} events The array of loaded events
-   * @param {Number} offset The offset of the loaded events
+   * @param {Array} envelopes The array of loaded envelopes
+   * @param {Number} offset The offset of the loaded envelopes
    */
-  constructor ({ token, cursors, events, offset }) {
+  constructor ({ token, cursors, envelopes, offset }) {
     this.token = token
     this.cursors = cursors
-    this.events = events
+    this.envelopes = envelopes
     this.offset = offset
     Object.freeze(this)
   }

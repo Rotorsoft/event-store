@@ -13,17 +13,17 @@ class Calculator extends Aggregate {
     this.sum = 0
   }
 
-  get commands () { 
+  get commands () {
     return { 
       AddNumbers: async context => {
         if (!Number.isInteger(context.payload.number1)) throw Err.invalidArgument('number1')
         if (!Number.isInteger(context.payload.number2)) throw Err.invalidArgument('number2')
-        this.push(EVENTS.NumbersAdded, context.payload)
+        context.push(EVENTS.NumbersAdded)
       },
       SubtractNumbers: async context => {
         if (!Number.isInteger(context.payload.number1)) throw Err.invalidArgument('number1')
         if (!Number.isInteger(context.payload.number2)) throw Err.invalidArgument('number2')
-        this.push(EVENTS.NumbersSubtracted, context.payload)
+        context.push(EVENTS.NumbersSubtracted)
       }
     }
   }
@@ -53,18 +53,18 @@ class EventCounter extends IEventHandler {
 
   get name () { return this._name_ }
   
-  async count (tenant, event) {
+  async count (tenant, event, envelope) {
     const path = '/counters/'.concat(this.name)
     let doc = this.cache.get(path) || { name: this.name }
     doc.events = doc.events || {}
-    doc.events[event.aid] = (doc.events[event.aid] || 0) + 1
+    doc.events[envelope.aid] = (doc.events[envelope.aid] || 0) + 1
     this.cache.set(path, doc)
   }
 
   get events () {
     return {
-      [EVENTS.NumbersAdded]: async (tenant, event) => {
-        return await this.count(tenant, event)
+      [EVENTS.NumbersAdded]: async (tenant, event, envelope) => {
+        return await this.count(tenant, event, envelope)
       }
     }
   }

@@ -13,14 +13,13 @@ class ConsoleTracer extends ITracer {
   }
 
   trace (fn) {
-    const { method, context, tenant, thread, events, handler, error, event, lease, result, ...args } = fn()
+    const { method, context, tenant, thread, handler, error, envelope, lease, result, ...args } = fn()
     if (error) {
       console.log(`!!! ERROR: ${error}`)
     }
     // if (context) console.log(`  ${method}: ${context.command} - ${JSON.stringify(context.payload)}`)
     //if (lease) console.log(lease)
-    // if (handler && event.aid === aggId) console.log(`  ${handler} (${thread}): ${event.id} at ${event.gid} handled ${event.name}.${event.version}`)
-    // // if (handler) console.log(`  ${handler}: handled ${event.name}.v${event.version}, actor ${event.actor}, aggregate ${event.aid}, on tenant ${tenant}`)
+    //if (handler && envelope.aid === aggId) console.log(`  ${handler} (${thread}) handled ${JSON.stringify(envelope)}`)
     // if (method === 'commitCursors') {
     //  console.log(`cursors committed on ${context.thread} as ${JSON.stringify(result)}`)
     // }

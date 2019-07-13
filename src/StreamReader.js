@@ -47,19 +47,19 @@ module.exports = class StreamReader {
     })
     if (!validHandlers.length) return false
 
-    const context = new ReaderContext({ tenant, thread, handlers: validHandlers, timeout })
+    const context = ReaderContext.create({ tenant, thread, handlers: validHandlers, timeout })
     const lease = await this._store_.pollStream(context, limit)
     this._tracer_.trace(() => ({ method: 'pollStream', lease }))
-    if (lease && lease.events.length) {
-      const min = Math.min(lease.events.length, limit)
+    if (lease && lease.envelopes.length) {
+      const min = Math.min(lease.envelopes.length, limit)
       for (let i = 0; i < min; i++) {
-        let event = lease.events[i]
+        let envelope = lease.envelopes[i]
         for (let handler of context.handlers) {
-          if (lease.cursors[handler.name] < event.gid) {
+          if (lease.cursors[handler.name] < envelope.gid) {
             try {
-              this._tracer_.trace(() => ({ method: 'handle', handler: handler.name, tenant, thread, event }))
-              await handler.handle(tenant, event)
-              lease.cursors[handler.name] = event.gid
+              this._tracer_.trace(() => ({ method: 'handle', handler: handler.name, tenant, thread, envelope }))
+              await handler.handle(tenant, envelope)
+              lease.cursors[handler.name] = envelope.gid
             }
             catch (e) {
               this._tracer_.trace(() => ({ error: e }))
@@ -69,7 +69,7 @@ module.exports = class StreamReader {
       }
       const result = await this._store_.commitCursors(context, lease)
       this._tracer_.trace(() => ({ method: 'commitCursors', context, result }))
-      return lease.events.length > limit
+      return lease.envelopes.length > limit
     }
     return false
   }

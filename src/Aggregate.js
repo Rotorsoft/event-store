@@ -1,6 +1,5 @@
 'use strict'
 
-const Event = require('./Event')
 const { unpad } = require('./Padder')
 const Err = require('./Err')
 
@@ -19,7 +18,6 @@ module.exports = class Aggregate {
     Object.assign(aggregate, payload)
     Object.defineProperty(aggregate, '_aggregate_id_', { value: _aggregate_id_, writable: !_aggregate_id_, enumerable: true }) 
     Object.defineProperty(aggregate, '_aggregate_version_', { value: _aggregate_version_, writable: true, enumerable: true })
-    Object.defineProperty(aggregate, '_uncommitted_events_', { value: [], writable: false, enumerable: false })
     return aggregate
   }
 
@@ -66,33 +64,24 @@ module.exports = class Aggregate {
   get events () { throw Err.notImplemented('events') }
 
   /**
-   * Event factory method used by command handlers to push new events
-   * @param {String} name event name
-   * @param {Object} payload event payload
-   * @param {Number} version optional event version
-   */
-  push (name, payload, version = 0) {
-    const event = new Event({ name, version, payload })
-    this.events[name](event)
-    this._uncommitted_events_.push(event)
-  }
-
-  /**
-   * Replays event and adjusts version. Called internally by event stores when loading aggregates
-   * 
-   * @param {Event} event The event 
-   */
-  _replay (event) {
-    this.events[event.name](event)
-    this._aggregate_version_ = unpad(event.id)
-  }
-
-  /**
    * Clones aggregate for storage/caching purposes. Override if deep cloning is needed
    * 
    * @returns {Object} Object with aggregate data
    */
   clone () {
     return Object.assign({}, this)
+  }
+
+  /**
+   * Replays events in stored envelopes and adjusts aggregate version
+   * Called internally by event stores when loading aggregates
+   * 
+   * @param {Array} envelopes The ordered array of stored envelopes with events
+   */
+  _replay (envelopes) {
+    envelopes.forEach(envelope => {
+      envelope.events.forEach(event => this.events[event.name](event))
+      this._aggregate_version_ = unpad(envelope.id)
+    })
   }
 }

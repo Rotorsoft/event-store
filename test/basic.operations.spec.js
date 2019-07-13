@@ -11,17 +11,18 @@ class ConsoleTracer extends ITracer {
   }
 
   trace (fn) {
-    const { method, context, events, ...args } = fn()
-    if (method && events) {
-      for (let event of events) {
-        const key = event.command + '-' + event.name
+    const { method, context, ...args } = fn()
+    if (method && context) {
+      const envelope = context._envelope
+      for (let event of context.events) {
+        const key = envelope.command + '-' + event.name
         const s = this.stats[method] || {}
-        const t = s[event.agg_type] || {}
+        const t = s[envelope.type] || {}
         const e = t[key] || {} 
         e.time = e.time || Date.now()
         e.count = (e.count || 0) + 1
         t[key] = e
-        s[event.agg_type] = t
+        s[envelope.type] = t
         this.stats[method] = s
       }
     }

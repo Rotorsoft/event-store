@@ -2,34 +2,11 @@
 
 const IEventStore = require('../IEventStore')
 const Aggregate = require('../Aggregate')
-const Event = require('../Event')
 const Err = require('../Err')
 const { pad } = require('../Padder')
 const Lease = require('../Lease')
 
 const SPROCS = {
-  commitEvents: {
-    id: "commitEvents",
-    body: function commitEvents (events) {
-      const insertEvent = async event => {
-        return new Promise(resolve => {
-          const accept = __.createDocument(__.getSelfLink(), event, (err, item) => {
-            if (err) throw err
-            resolve(item)
-          })
-          if (!accept) throw 'commitEvents not accepted'
-        })
-      }
-      const insertEvents = async events => {
-        const results = []
-        for (let event of events) {
-          results.push(await insertEvent(event))
-        }
-        return results
-      }
-      return insertEvents(events).then(results => getContext().getResponse().setBody(results))
-    }
-  },
   startLease: {
     id: "startLease",
     body: function startLease (threadId, offset, timeout) {
@@ -80,12 +57,6 @@ const EVENTS_PARTITION_KEY = { kind: "Hash", paths: ["/aid"] }
 const SNAPS_PARTITION_KEY = { kind: "Hash", paths: ["/id"] }
 const THREADS_PARTITION_KEY = { kind: "Hash", paths: ["/id"] }
 
-const getContainer = async (cosmos, tenant, id, partitionKey) => {
-  const { database } = await cosmos.databases.createIfNotExists({ id: tenant })
-  const { container } = await database.containers.createIfNotExists({ id, partitionKey })
-  return container
-}
-
 const getSproc = async (container, sp) => {
   try {
     const { sproc } = await container.storedProcedure(sp.id).read()
@@ -104,6 +75,12 @@ module.exports = class CosmosDbEventStore extends IEventStore {
     super()
     this.cosmos = cosmos
     Object.freeze(this)
+  }
+
+  async getContainer (tenant, id, partitionKey) {
+    const { database } = await this.cosmos.databases.createIfNotExists({ id: tenant })
+    const { container } = await database.containers.createIfNotExists({ id, partitionKey })
+    return container
   }
 
   async loadItem (container, id) {
@@ -127,21 +104,25 @@ module.exports = class CosmosDbEventStore extends IEventStore {
     return result
   }
 
+  async getContainers (context) {
+    context.events_container = context.events_container || await this.getContainer(context.actor.tenant, 'events', EVENTS_PARTITION_KEY)
+    if (context.aggregateType.snapshot) context.snaps_container = context.snaps_container || await this.getContainer(context.actor.tenant, 'snapshots', SNAPS_PARTITION_KEY)
+  }
+
   async loadAggregate (context, aggregateId, expectedVersion = -1) {
     const { aggregateType } = context
-    if (aggregateId) {
-      const e_container = await getContainer(this.cosmos, context.actor.tenant, 'events', EVENTS_PARTITION_KEY)
-      const s_container = aggregateType.snapshot ? await getContainer(this.cosmos, context.actor.tenant, 'snapshots', SNAPS_PARTITION_KEY) : null
+    await this.getContainers(context)
 
+    if (aggregateId) {
       // load snapshot
-      const doc = s_container ? await this.loadItem(s_container, aggregateId) : {}
+      const doc = context.snaps_container ? await this.loadItem(context.snaps_container, aggregateId) : {}
       const aggregate = Aggregate.create(aggregateType, doc.payload || { _aggregate_id_: aggregateId, _aggregate_version_: -1 })
       
       // load events that ocurred after snapshot was taken
       while (expectedVersion === -1 || aggregate.aggregateVersion < expectedVersion) {
-        const items = await this.loadEvents(e_container, aggregateId, pad(aggregate.aggregateVersion))
-        if (!items.length) break
-        items.forEach(item => aggregate._replay(new Event(item)))
+        const envelopes = await this.loadEvents(context.events_container, aggregateId, pad(aggregate.aggregateVersion))
+        if (!envelopes.length) break
+        aggregate._replay(envelopes)
         expectedVersion = Math.max(expectedVersion, aggregate.aggregateVersion)
       }
       return aggregate
@@ -150,34 +131,31 @@ module.exports = class CosmosDbEventStore extends IEventStore {
     return Aggregate.create(aggregateType, { _aggregate_id_: aggregateType.name.concat('-', Date.now().toString()) })
   }
 
-  async commitEvents (context, aggregate, expectedVersion = -1) {
-    const { aggregateType } = context
+  async commitEvents (context, expectedVersion = -1) {
+    const { aggregateType, aggregate } = context
     if (aggregate.aggregateVersion !== expectedVersion) throw Err.concurrency()
+    await this.getContainers(context)
 
-    // commit events
-    const stamps = aggregate._uncommitted_events_.map(event => event.stamp(pad(++expectedVersion), aggregate.aggregateId, context))
-    const e_container = await getContainer(this.cosmos, context.actor.tenant, 'events', EVENTS_PARTITION_KEY)
-    const s_container = aggregateType.snapshot ? await getContainer(this.cosmos, context.actor.tenant, 'snapshots', SNAPS_PARTITION_KEY) : null
-
-    const sp = await getSproc(e_container, SPROCS.commitEvents)
     try {
-      const { body } = await sp.execute([stamps], { partitionKey: aggregate.aggregateId })
+      await context.events_container.items.create(context._envelope)
+      aggregate._aggregate_version_++
     } catch (error) {
       throw Err.concurrency()
     }
-    aggregate._aggregate_version_ = expectedVersion
 
     // save snapshot
-    if (s_container) {
-      const snapshot = {
-        id: aggregate._aggregate_id_,
-        type: aggregateType.name,
-        payload: aggregate.clone()
+    if (context.snaps_container) {
+      try {
+        const snapshot = {
+          id: aggregate._aggregate_id_,
+          type: aggregateType.name,
+          payload: aggregate.clone()
+        }
+        await context.snaps_container.items.upsert(snapshot)
+      } catch (error) {
+        console.error(error)
       }
-      await s_container.items.upsert(snapshot)
     }
-
-    return stamps
   }
 
   async pollEvents (container, offset, limit) {
@@ -193,14 +171,11 @@ module.exports = class CosmosDbEventStore extends IEventStore {
   }
 
   async pollStream (context, limit = 10) {
-    const t_container = await getContainer(this.cosmos, context.tenant, 'threads', THREADS_PARTITION_KEY)
-    const thread = await this.loadItem(t_container, context.thread)
+    context.threads_container = await this.getContainer(context.tenant, 'threads', THREADS_PARTITION_KEY)
+    const thread = await this.loadItem(context.threads_container, context.thread)
+    if (thread.lease && (thread.lease.expiresAt || 0) > Date.now()) return // skip if thread is currently leased
 
-    // skip if thread is currently leased
-    const now = Date.now()
-    if (thread.lease && (thread.lease.expiresAt || 0) > now) return
-
-    // init cursors and get min version to poll
+    // init cursors and get min offset to poll
     const threadCursors = Object.assign({}, thread.cursors)
     const cursors = {}
     const offset = context.handlers.reduce((offset, handler) => {
@@ -210,20 +185,19 @@ module.exports = class CosmosDbEventStore extends IEventStore {
     }, 'END')
 
     // load events
-    const e_container = await getContainer(this.cosmos, context.tenant, 'events', EVENTS_PARTITION_KEY)
-    const events = await this.pollEvents(e_container, offset, limit + 1)
-    if (!events.length) return null
+    const events_container = await this.getContainer(context.tenant, 'events', EVENTS_PARTITION_KEY)
+    const envelopes = await this.pollEvents(events_container, offset, limit + 1)
+    if (!envelopes.length) return null
 
     // start lease
-    const sp = await getSproc(t_container, SPROCS.startLease)
+    const sp = await getSproc(context.threads_container, SPROCS.startLease)
     const { body } = await sp.execute([context.thread, offset, context.timeout], { partitionKey: context.thread })
-    return new Lease({ token: body.lease.token, cursors, events: events, offset })
+    return new Lease({ token: body.lease.token, cursors, envelopes, offset })
   }
 
   async commitCursors(context, lease) {
-    if (!lease.events.length) return false
-    const t_container = await getContainer(this.cosmos, context.tenant, 'threads', THREADS_PARTITION_KEY)
-    const sp = await getSproc(t_container, SPROCS.endLease)
+    if (!lease.envelopes.length) return false
+    const sp = await getSproc(context.threads_container, SPROCS.endLease)
     const { body } = await sp.execute([context.thread, lease], { partitionKey: context.thread })
     return body
   }

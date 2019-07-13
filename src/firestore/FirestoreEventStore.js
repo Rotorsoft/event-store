@@ -2,7 +2,6 @@
 
 const IEventStore = require('../IEventStore')
 const Aggregate = require('../Aggregate')
-const Event = require('../Event')
 const Err = require('../Err')
 const { pad } = require('../Padder')
 const Lease = require('../Lease')
@@ -29,9 +28,9 @@ module.exports = class FirestoreEventStore extends IEventStore {
       
       // load events that ocurred after snapshot was taken
       while (expectedVersion === -1 || aggregate.aggregateVersion < expectedVersion) {
-        const events = await eventsRef.where('aid', '==', aggregateId).where('id', '>', pad(aggregate.aggregateVersion)).get()
-        if (!events.size) break
-        events.forEach(doc => aggregate._replay(new Event(doc.data())))
+        const envelopes = await eventsRef.where('aid', '==', aggregateId).where('id', '>', pad(aggregate.aggregateVersion)).get()
+        if (!envelopes.size) break
+        aggregate._replay(envelopes.docs.map(envelope => envelope.data()))
         expectedVersion = Math.max(expectedVersion, aggregate.aggregateVersion)
       }
       return aggregate
@@ -40,39 +39,30 @@ module.exports = class FirestoreEventStore extends IEventStore {
     return Aggregate.create(aggregateType, { _aggregate_id_: collRef.doc().id })
   }
 
-  async commitEvents (context, aggregate, expectedVersion = -1) {
-    const { actor, aggregateType } = context
+  async commitEvents (context, expectedVersion = -1) {
+    const { actor, aggregateType, aggregate } = context
     if (aggregate.aggregateVersion !== expectedVersion) throw Err.concurrency()
 
-    const eventsRef = this.firestore.collection(eventsPath(actor.tenant))
     try {
-      return await this.firestore.runTransaction(async transaction => {
-        const events = []
-        for (let event of aggregate._uncommitted_events_) {
-          const id = pad(++expectedVersion)
-          const docid = aggregate.aggregateId.concat('.', id)
-          const stamp = event.stamp(id, aggregate.aggregateId, context)
-          await transaction.set(eventsRef.doc(docid), stamp)
-          events.push(stamp)
-        }
-
-        // save snapshot
-        aggregate._aggregate_version_ = expectedVersion
-        if (aggregateType.snapshot) {
-          const aggregateRef = this.firestore.collection(snapshotsPath(actor.tenant)).doc(aggregate.aggregateId)
-          await transaction.set(aggregateRef, aggregate.clone())
-        }
-
-        return events
-      })
+      const envelope = context._envelope
+      const docid = aggregate.aggregateId.concat('.', envelope.id) // firestore id
+      await this.firestore.collection(eventsPath(actor.tenant)).doc(docid).create(envelope)
+      aggregate._aggregate_version_++
     } catch (error) {
       throw Err.concurrency()
+    }
+    // save snapshot
+    if (aggregateType.snapshot) {
+      try {
+        await this.firestore.collection(snapshotsPath(actor.tenant)).doc(aggregate.aggregateId).set(aggregate.clone())
+      } catch (error) {
+        console.error(error)
+      }
     }
   }
 
   async pollStream (context, limit = 10) {
     const threadRef = this.firestore.collection(threadsPath(context.tenant)).doc(context.thread)
-    const eventsRef = this.firestore.collection(eventsPath(context.tenant))
 
     return await this.firestore.runTransaction(async transaction => {
       const doc = await threadRef.get()
@@ -92,18 +82,18 @@ module.exports = class FirestoreEventStore extends IEventStore {
       }, 'END')
 
       // load events
-      const query = await eventsRef.where('gid', '>', offset).limit(limit + 1).get()
+      const query = await this.firestore.collection(eventsPath(context.tenant)).where('gid', '>', offset).limit(limit + 1).get()
       if (!query.size) return null
 
       // save lease
-      const events = query.docs.map(doc => new Event(doc.data()))
+      const envelopes = query.docs.map(doc => doc.data())
       await transaction.set(threadRef, { lease: { token: now, offset, expiresAt: Date.now() + context.timeout }}, { merge: true })
-      return new Lease({ token: now, cursors, events, offset })
+      return new Lease({ token: now, cursors, envelopes, offset })
     })
   }
 
   async commitCursors(context, lease) {
-    if (!lease.events.length) return false
+    if (!lease.envelopes.length) return false
     const threadRef = this.firestore.collection(threadsPath(context.tenant)).doc(context.thread)
     
     return await this.firestore.runTransaction(async transaction => {

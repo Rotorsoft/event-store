@@ -2,6 +2,7 @@
 
 const Aggregate = require('./Aggregate')
 const Err = require('./Err')
+const { pad } = require('./Padder')
 
 module.exports = class CommandContext {
   /**
@@ -27,7 +28,40 @@ module.exports = class CommandContext {
     Object.defineProperty(ctx, 'aggregateId', { value: aggregateId, writable: false, enumerable: true })
     Object.defineProperty(ctx, 'expectedVersion', { value: expectedVersion, writable: false, enumerable: true })
     Object.defineProperty(ctx, 'payload', { value: Object.freeze(payload), writable: false, enumerable: true })
+    Object.defineProperty(ctx, 'events', { value: [], writable: false, enumerable: false })
     return ctx
+  }
+
+  /**
+   * Gets current state of context envelope
+   */
+  get _envelope () {
+    const id = pad((this.aggregate ? this.aggregate.aggregateVersion : this.expectedVersion) + 1)
+    return Object.freeze({
+      id,
+      aid: this.aggregate ? this.aggregate.aggregateId : this.aggregateId,
+      gid: Date.now().toString().concat('.', id),
+      type: this.aggregateType.name,
+      command: this.command,
+      actor: this.actor.id,
+      events: this.events
+    })
+  }
+
+  /**
+   * Handles and pushes new event into context's envelope
+   * 
+   * @param {String} name The event name
+   * @param {Object} payload The optional event payload (context.payload by default)
+   * @param {Number} version The optional event version (0 by default)
+   */
+  push (name, payload = null, version = 0) {
+    Err.required('name', name)
+    if (this.aggregate) {
+      const event = Object.freeze({ name, version, payload: payload || this.payload })
+      this.aggregate.events[name](event)
+      this.events.push(event)
+    }
   }
 
   /**
@@ -39,15 +73,13 @@ module.exports = class CommandContext {
    * @returns The loaded aggregate or null
    */
   async load (aggregateType, aggregateId, expectedVersion = -1) {
-    Err.required('aggregateType', aggregateType, 'function')
     Err.required('aggregateType', aggregateType.prototype, Aggregate)
     Err.required('aggregateId', aggregateId)
     Err.required('expectedVersion', expectedVersion, 'number')
-    
+
     const ctx = new CommandContext()
-    ctx.actor = this.actor
-    ctx.aggregateType = this.aggregateType
-    Object.freeze(ctx)
+    Object.defineProperty(ctx, 'actor', { value: this.actor, writable: false, enumerable: true })
+    Object.defineProperty(ctx, 'aggregateType', { value: aggregateType, writable: false, enumerable: true })
     return await this.handler._store_.loadAggregate(ctx, aggregateId, expectedVersion)
   }
 }

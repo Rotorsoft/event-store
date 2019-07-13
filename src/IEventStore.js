@@ -16,12 +16,10 @@ module.exports = class IEventStore {
   /**
    * Commits aggregate's pending events to store
    * 
-   * @param {CommandContext} context The command context
-   * @param {Aggregate} aggregate The aggregate with pending events
+   * @param {CommandContext} context The command context with loaded aggregate
    * @param {Number} expectedVersion The aggregate expected version
-   * @returns {Array} Array of committed events
    */
-  async commitEvents (context, aggregate, expectedVersion = -1) { throw Err.notImplemented('commitEvents') }
+  async commitEvents (context, expectedVersion = -1) { throw Err.notImplemented('commitEvents') }
 
   /**
    * Polls stream for new events covering handlers

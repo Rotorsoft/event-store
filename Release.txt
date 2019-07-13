@@ -21,3 +21,10 @@
 
 0.2.1
 * Set max padded event id per aggregate to 1 million
+
+0.3.0
+* Created 'envelope' to encapsulate and store command context and produced events in an atomic single document operation
+* Event replaying (when loading aggregates or reading streams) is now based on stored envelopes instead of events
+* New events are now pushed to command context instead of aggregate
+* Using @google-cloud/firestore to test server side api
+* Event handlers now handle envelopes with one or more events

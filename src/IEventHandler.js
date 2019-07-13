@@ -30,15 +30,12 @@ module.exports = class IEventHandler {
    * Handles event
    * 
    * @param {String} tenant The tenant id
-   * @param {Event} event The event
-   * @returns True if succesfully handled
+   * @param {Object} envelope The envelope with metadata and events
    */
-  async handle (tenant, event) {
-    const eh = this.events[event.name]
-    if (eh) {
-      await eh(tenant, event)
-      return true
-    }
-    return false
+  async handle (tenant, envelope) {
+    envelope.events.forEach(async event => {
+      const eh = this.events[event.name]
+      if (eh) await eh(tenant, event, envelope)
+    })
   }
 }

@@ -11,7 +11,7 @@
     "test-firebase-one": "firebase emulators:exec --only firestore \"npm run mocha-one\"",
     "cover-firebase": "firebase emulators:exec --only firestore \"npm run cover-all\"",
     "test-azure": "set PROVIDER=azure && mocha ./test/**/*.spec.js --reporter spec --timeout 10000 || exit 0",
-    "test-azure-one": "set PROVIDER=azure && mocha ./test/streams.spec.js --reporter spec --timeout 10000 || exit 0"
+    "test-azure-one": "set PROVIDER=azure && mocha ./test/basic.spec.js --reporter spec --timeout 10000 || exit 0"
   },
   "repository": {
     "type": "git",
@@ -43,6 +43,7 @@
   "devDependencies": {
     "@azure/cosmos": "^2.1.7",
     "@firebase/testing": "^0.11.4",
+    "@google-cloud/firestore": "^2.2.4",
     "chai": "^4.2.0",
     "coveralls": "^3.0.4",
     "istanbul": "^1.1.0-alpha.1",

@@ -75,13 +75,13 @@ module.exports = class CommandHandler {
     // handle command
     await context.aggregate.commands[command](context)
 
-    if (context.aggregate._uncommitted_events_.length) {
+    if (context.events.length) {
       // assume user wants to act on latest version when not provided
       if (expectedVersion === -1) expectedVersion = context.aggregate._aggregate_version_
 
       // commit events
-      const events = await this._store_.commitEvents(context, context.aggregate, expectedVersion)
-      this._tracer_.trace(() => ({ method: 'commitEvents', events, context }))
+      await this._store_.commitEvents(context, expectedVersion)
+      this._tracer_.trace(() => ({ method: 'commitEvents', context }))
 
       // cache aggregate
       this._cache_.set(context.aggregate.aggregateId, context.aggregate.clone())

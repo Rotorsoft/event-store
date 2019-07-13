@@ -205,7 +205,7 @@ describe('Err handling 2', () => {
     try {
       class A extends Aggregate {
         constructor() { super() }
-        get commands () { return { C: async () => { this.push('a', 'E', {}) } } }
+        get commands () { return { C: async (context) => { context.push('a', {}) } } }
       }
       const ch = factory.createCommandHandler([A])
       await ch.command(actor1, 'C')

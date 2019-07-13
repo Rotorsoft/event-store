@@ -77,12 +77,12 @@ class Calculator extends Aggregate {
       AddNumbers: async context => {
         if (!Number.isInteger(context.payload.number1)) throw Err.invalidArgument('number1')
         if (!Number.isInteger(context.payload.number2)) throw Err.invalidArgument('number2')
-        this.push(EVENTS.NumbersAdded, context.payload)
+        context.push(EVENTS.NumbersAdded)
       },
       SubtractNumbers: async context => {
         if (!Number.isInteger(context.payload.number1)) throw Err.invalidArgument('number1')
         if (!Number.isInteger(context.payload.number2)) throw Err.invalidArgument('number2')
-        this.push(EVENTS.NumbersSubtracted, context.payload)
+        context.push(EVENTS.NumbersSubtracted)
       }
     }
   }
@@ -168,17 +168,17 @@ module.exports = class Calculator extends Aggregate {
     return { 
       PressDigit: async context => {
         if (context.payload.digit < '0' || context.payload.digit > '9') throw Err.invalidArgument('digit')
-        this.push(EVENTS.DigitPressed, context.payload)
+        context.push(EVENTS.DigitPressed)
       },
       PressDot: async context => {
-        this.push(EVENTS.DotPressed, context.payload)
+        context.push(EVENTS.DotPressed)
       },
       PressOperator: async context => {
         if (!Object.keys(OPERATORS).includes(context.payload.operator)) throw Err.invalidArgument('operator')
-        this.push(EVENTS.OperatorPressed, context.payload)
+        context.push(EVENTS.OperatorPressed)
       },
       PressEquals: async context => {
-        this.push(EVENTS.EqualsPressed, context.payload)
+        context.push(EVENTS.EqualsPressed)
       }
     }
   }
