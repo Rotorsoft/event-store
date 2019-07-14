@@ -11,7 +11,8 @@
     "test-firebase-one": "firebase emulators:exec --only firestore \"npm run mocha-one\"",
     "cover-firebase": "firebase emulators:exec --only firestore \"npm run cover-all\"",
     "test-azure": "set PROVIDER=azure && mocha ./test/**/*.spec.js --reporter spec --timeout 10000 || exit 0",
-    "test-azure-one": "set PROVIDER=azure && mocha ./test/basic.spec.js --reporter spec --timeout 10000 || exit 0"
+    "test-azure-one": "set PROVIDER=azure && mocha ./test/basic.spec.js --reporter spec --timeout 10000 || exit 0",
+    "test-mongo": "set PROVIDER=mongodb && mocha ./test/**/*.spec.js --reporter spec --timeout 10000 || exit 0"
   },
   "repository": {
     "type": "git",
@@ -48,6 +49,7 @@
     "coveralls": "^3.0.4",
     "istanbul": "^1.1.0-alpha.1",
     "mocha": "^6.1.4",
-    "mocha-lcov-reporter": "^1.3.0"
+    "mocha-lcov-reporter": "^1.3.0",
+    "mongodb": "^3.2.7"
   }
 }

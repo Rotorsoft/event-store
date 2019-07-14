@@ -28,3 +28,6 @@
 * New events are now pushed to command context instead of aggregate
 * Using @google-cloud/firestore to test server side api
 * Event handlers now handle envelopes with one or more events
+
+0.3.1
+* Added mongodb store

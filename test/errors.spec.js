@@ -2,7 +2,7 @@
 
 const { init, teardown } = require('./setup')
 const { Actor, Aggregate, CommandHandler } = require('../index')
-const FirestoreEventStore = require('../src/firestore/FirestoreEventStore')
+const FirestoreEventStore = require('../src/stores/FirestoreEventStore')
 const { Calculator } = require('./model')
 const { InvalidAggregate } = require('./invalid')
 

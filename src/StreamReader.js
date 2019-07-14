@@ -67,8 +67,8 @@ module.exports = class StreamReader {
           }
         }
       }
-      const result = await this._store_.commitCursors(context, lease)
-      this._tracer_.trace(() => ({ method: 'commitCursors', context, result }))
+      await this._store_.commitCursors(context, lease)
+      this._tracer_.trace(() => ({ method: 'commitCursors', context, lease }))
       return lease.envelopes.length > limit
     }
     return false

@@ -3,23 +3,26 @@
 const CommandHandler = require('./CommandHandler')
 const StreamReader = require('./StreamReader')
 const Err = require('./Err')
-const FirestoreEventStore = require('./firestore/FirestoreEventStore')
-const CosmosDbEventStore = require('./cosmosdb/CosmosDbEventStore')
+const FirestoreEventStore = require('./stores/FirestoreEventStore')
+const CosmosDbEventStore = require('./stores/CosmosDbEventStore')
+const MongoDbEventStore = require('./stores/MongoDbEventStore')
 
 module.exports = class Factory {
   /**
    * Factory constructor
    * 
-   * @param {Object} db The cloud data store
+   * @param {Object} store The cloud data store
    */
-  constructor (db) {
-    Err.required('db', db, 'object')
-    if (db.collection) {
-      this.store = new FirestoreEventStore(db)
-    } else if (db.database) {
-      this.store = new CosmosDbEventStore(db)
+  constructor (store) {
+    Err.required('store', store, 'object')
+    if (store.topology) {
+      this.store = new MongoDbEventStore(store)
+    } else if (store.collection) {
+      this.store = new FirestoreEventStore(store)
+    } else if (store.database) {
+      this.store = new CosmosDbEventStore(store)
     } else {
-      throw Err.invalidArgument('db')
+      throw Err.invalidArgument('store')
     }
     Object.freeze(this)
   }
