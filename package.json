@@ -1,6 +1,6 @@
 {
   "name": "@rotorsoft/event-store",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Generic multi-tenant event sourcing store",
   "main": "index.js",
   "scripts": {
