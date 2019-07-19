@@ -1,9 +1,12 @@
-@rotorsoft/event-store [![Build Status](https://dev.azure.com/rotorsoft-org/event-store/_apis/build/status/Rotorsoft.event-store?branchName=master)](https://dev.azure.com/rotorsoft-org/event-store/_build/latest?definitionId=1&branchName=master) [![Coverage Status](https://coveralls.io/repos/github/Rotorsoft/event-store/badge.svg)](https://coveralls.io/github/Rotorsoft/event-store)
+@rotorsoft/event-store
+
+[![NPM Version](https://img.shields.io/npm/v/@rotorsoft/event-store.svg)](https://www.npmjs.com/package/@rotorsoft/event-store)
+[![Build Status](https://dev.azure.com/rotorsoft-org/event-store/_apis/build/status/Rotorsoft.event-store?branchName=master)](https://dev.azure.com/rotorsoft-org/event-store/_build/latest?definitionId=1&branchName=master) [![Coverage Status](https://coveralls.io/repos/github/Rotorsoft/event-store/badge.svg)](https://coveralls.io/github/Rotorsoft/event-store)
 =========
 
-The original module **@rotorsoft/firestore-event-store** was a proof of concept, just trying to figure out if a low cost cloud based serverless platform could support a number of PWA apps. This is a fork at version 3.1.1, and the new goal is to try the major cloud platforms: Azure (CosmosDB store), and AWS (DynamoDB store).
+The original module **@rotorsoft/firestore-event-store** was a proof of concept, just trying to figure out if a low cost cloud based serverless platform could support a number of PWA apps. This is a fork at version 3.1.1, and the new goal is to try other major cloud platforms: Azure (CosmosDB store), AWS (DynamoDB store), MongoDB Atlas, etc.
 
-The right mix of Serverless, DDD, Event Sourcing, and CQRS is probably the best approach to software developmet today. This module follows the [CQRS](http://codebetter.com/gregyoung/2012/09/09/cqrs-is-not-an-architecture-2/) pattern proposed by Greg Young around 2010. The [Architecture](#architecture) section depicts the logical architecture using the colors of [Event Storming](https://en.wikipedia.org/wiki/Event_storming), a methodology invented by Alberto Brandolini in the context of DDD.
+The right mix of Serverless, DDD, Event Sourcing, and CQRS is probably the best approach to most business oriented software developmet today. This module follows the [CQRS](http://codebetter.com/gregyoung/2012/09/09/cqrs-is-not-an-architecture-2/) pattern proposed by Greg Young around 2010. The [Architecture](#architecture) section depicts the logical architecture using the colors of [Event Storming](https://en.wikipedia.org/wiki/Event_storming), a methodology invented by Alberto Brandolini in the context of DDD.
 
 One of the great advantages of Event Sourcing is having a "replayable history". With proper instrumentation you can easily solve problems like:
 
@@ -12,31 +15,52 @@ One of the great advantages of Event Sourcing is having a "replayable history". 
 * Recreating or creating new projections when requirements change
 * Keeping documentation in sync with the source code - Self documenting code
 
-The current model supports multiple tenants as well as multiple event streams within each tenant. Actors belonging to a single tenant can carry multiple roles.
+The current model supports multiple tenants where actors can carry multiple roles.
 
-Users should adapt their apps to the event delivery mechanisms supported by their cloud provider of choice. The Event Reader interface can be implemented as an optional tool to process events from the store.  
+Users should adapt their apps to the event delivery mechanisms supported by their cloud provider of choice. The Event Reader interface can be implemented as an optional tool to process ordered events from the store.  
 
 ## Settings
 
 Each cloud provider will require some specific settings to secure and/or index the store. 
 
 ### Firestore settings
+
+##### firestore.indexes.json
+
+````json
+{
+  "indexes": [
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "aid", "mode": "ASCENDING" },
+        { "fieldPath": "id", "mode": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
+````
+
 ##### firestore.rules
 
-````json 
+````js
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // only admin can write via api
-    match /tenants/{tenant} {
-      allow write: if false;
-      allow read: if request.auth != null && request.auth.uid != null && request.auth.token != null && request.auth.token.tenant == tenant;
+    // only via admin api
+    match /{document=**} {
+      allow read, write: if false;
     }
     
-    // only admin can write via api
-    match /tenants/{tenant}/{document=**} {
-      allow write: if false;
-      allow read: if request.auth != null && request.auth.uid != null && request.auth.token != null && request.auth.token.tenant == tenant;
+    // only authenticated users can read tenant document
+    match /tenants/{tenant} {
+      allow read: if request.auth != null && request.auth.token != null && request.auth.token.tenant == tenant;
+    }
+    
+    // only authenticated users can read snapshots
+    match /tenants/{tenant}/{snapshots}/{snapshot} {
+      allow read: if request.auth != null && request.auth.token != null && request.auth.token.tenant == tenant;
     }
   }
 }
