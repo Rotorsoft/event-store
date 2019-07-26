@@ -4,6 +4,7 @@ const { init, teardown } = require('./setup')
 const { Actor } = require('../index')
 const { Calculator, Calculator2, EventCounter } = require('./model')
 const SimpleCache = require('../src/SimpleCache')
+const ConsoleTracer = require('./ConsoleTracer')
 
 process.on('unhandledRejection', error => { console.log('unhandledRejection', error) })
 

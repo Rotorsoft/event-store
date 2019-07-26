@@ -81,7 +81,7 @@ A trivial aggregate and event handler using Firestore:
 
 ```javascript
 const firebase = require('firebase')
-const { Factory, Actor, Aggregate, IEventHandler, Err } = require('@rotorsoft/event-store')
+const { FirestoreEventStore, CommandHandler, StreamReader, Actor, Aggregate, IEventHandler, Err } = require('@rotorsoft/event-store')
 
 const EVENTS = {
   NumbersAdded: 'NumbersAdded',
@@ -149,9 +149,9 @@ class EventCounter extends IEventHandler {
   }
 }
 
-const factory = new Factory(firebase, firebase.firestore())
-const ch = factory.createCommandHandler([Calculator])
-const sr = factory.createStreamReader()
+const store = new FirestoreEventStore(firebase.firestore())
+const ch = new CommandHandler(store, [Calculator])
+const sr = new StreamReader(store)
 let actor = new Actor({ id: 'user1', name: 'actor 1', tenant: 'tenant1', roles: ['manager', 'user'] })
 let context = await ch.command(actor, 'AddNumbers', { number1: 1, number2: 2, aggregateId: 'calc1' })
 context = await ch.command(actor, 'AddNumbers', { number1: 3, number2: 4, aggregateId: context.aggregateId, expectedVersion: context.aggregate.aggregateVersion })
@@ -249,7 +249,7 @@ And we can unit test it with chai:
 'use strict'
 
 const firebase = require('firebase')
-const { Factory, Actor, Aggregate, IEventHandler, Err } = require('@rotorsoft/event-store')
+const { FirestoreEventStore, CommandHandler, StreamReader, Actor, Aggregate, IEventHandler, Err } = require('@rotorsoft/event-store')
 const Calculator = require('./calculator')
 const actor1 = new Actor({ id: 'user1', name: 'user1', tenant: 'tenant1', roles: [] })
 
@@ -277,8 +277,8 @@ class ConsoleTracer extends ITracer {
   }
 }
 
-const factory = new Factory(firebase, firebase.firestore())
-const ch = factory.createCommandHandler([Calculator], new ConsoleTracer())
+const store = new FirestoreEventStore(firebase.firestore())
+const ch = new CommandHandler(store, [Calculator], new ConsoleTracer())
 
 describe('Calculator basic operations', () => {
   async function c (calc, command, payload) {

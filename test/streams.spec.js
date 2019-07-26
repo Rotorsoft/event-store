@@ -4,30 +4,9 @@ const { init, teardown } = require('./setup')
 const { Actor, ITracer } = require('../index')
 const { Calculator, EventCounter } = require('./model')
 const SimpleCache = require('../src/SimpleCache')
+const ConsoleTracer = require('./ConsoleTracer')
 
 const aggId = 'xyz-'.concat(Date.now())
-
-class ConsoleTracer extends ITracer {
-  constructor () {
-    super()
-  }
-
-  trace (fn) {
-    const { method, context, tenant, thread, handler, error, envelope, lease, result, ...args } = fn()
-    if (error) {
-      console.log(`!!! ERROR: ${error}`)
-    }
-    // if (context) console.log(`  ${method}: ${context.command} - ${JSON.stringify(context.payload)}`)
-    //if (lease) console.log(lease)
-    //if (handler && envelope.aid === aggId) console.log(`  ${handler} (${thread}) handled ${JSON.stringify(envelope)}`)
-    // if (method === 'commitCursors') {
-    //  console.log(`cursors committed on ${context.thread} as ${JSON.stringify(result)}`)
-    // }
-    // if (method === 'commitEvents') {
-    //   console.log(events)
-    // }
-  }
-}
 
 const actor1 = new Actor({ id: 'user1', name: 'user1', tenant: 'tenant1', roles: [] })
 const tracer = new ConsoleTracer()
@@ -40,8 +19,8 @@ after (async () => {
 describe('Streams', () => {
   before (async () => {
     factory = await init()
-    ch = factory.createCommandHandler([Calculator], tracer)
-    sr = factory.createStreamReader(tracer)
+    ch = factory.createCommandHandler([Calculator])
+    sr = factory.createStreamReader()
     cache = new SimpleCache()
   })
 

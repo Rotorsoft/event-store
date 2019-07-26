@@ -1,11 +1,12 @@
 'use strict'
 
-const CommandHandler = require('./CommandHandler')
-const StreamReader = require('./StreamReader')
-const Err = require('./Err')
-const FirestoreEventStore = require('./stores/FirestoreEventStore')
-const CosmosDbEventStore = require('./stores/CosmosDbEventStore')
-const MongoDbEventStore = require('./stores/MongoDbEventStore')
+const CommandHandler = require('../src/CommandHandler')
+const StreamReader = require('../src/StreamReader')
+const Err = require('../src/Err')
+const FirestoreEventStore = require('../src/stores/FirestoreEventStore')
+const CosmosDbEventStore = require('../src/stores/CosmosDbEventStore')
+const MongoDbEventStore = require('../src/stores/MongoDbEventStore')
+const DynamoDbEventStore = require('../src/stores/DynamoDbEventStore')
 
 module.exports = class Factory {
   /**
@@ -21,6 +22,8 @@ module.exports = class Factory {
       this.store = new FirestoreEventStore(store)
     } else if (store.database) {
       this.store = new CosmosDbEventStore(store)
+    } else if (store.put) {
+      this.store = new DynamoDbEventStore(store)
     } else {
       throw Err.invalidArgument('store')
     }

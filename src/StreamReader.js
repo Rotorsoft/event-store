@@ -49,7 +49,7 @@ module.exports = class StreamReader {
 
     const context = ReaderContext.create({ tenant, thread, handlers: validHandlers, timeout })
     const lease = await this._store_.pollStream(context, limit)
-    this._tracer_.trace(() => ({ method: 'pollStream', lease }))
+    this._tracer_.trace(() => ({ method: 'pollStream', context, lease }))
     if (lease && lease.envelopes.length) {
       const min = Math.min(lease.envelopes.length, limit)
       for (let i = 0; i < min; i++) {
@@ -57,7 +57,7 @@ module.exports = class StreamReader {
         for (let handler of context.handlers) {
           if (lease.cursors[handler.name] < envelope.gid) {
             try {
-              this._tracer_.trace(() => ({ method: 'handle', handler: handler.name, tenant, thread, envelope }))
+              this._tracer_.trace(() => ({ method: 'handle', handler: handler.name, context, lease }))
               await handler.handle(tenant, envelope)
               lease.cursors[handler.name] = envelope.gid
             }

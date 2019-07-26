@@ -7,11 +7,13 @@ const CommandHandler = require('./src/CommandHandler')
 const StreamReader = require('./src/StreamReader')
 const Aggregate = require('./src/Aggregate')
 const Actor = require('./src/Actor')
-const Factory = require('./src/Factory')
 const Err = require('./src/Err')
+const FirestoreEventStore = require('./src/stores/FirestoreEventStore')
+const CosmosDbEventStore = require('./src/stores/CosmosDbEventStore')
+const MongoDbEventStore = require('./src/stores/MongoDbEventStore')
+const DynamoDbEventStore = require('./src/stores/DynamoDbEventStore')
 
 module.exports = {
-  Factory,
   Actor,
   Aggregate,
   CommandHandler,
@@ -19,5 +21,9 @@ module.exports = {
   IEventHandler,
   IEventStore,
   ITracer,
-  Err
+  Err,
+  FirestoreEventStore,
+  CosmosDbEventStore,
+  MongoDbEventStore,
+  DynamoDbEventStore
 }

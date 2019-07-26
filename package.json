@@ -7,12 +7,15 @@
     "mocha-one": "mocha ./test/basic.spec.js --reporter spec --timeout 10000 || exit 0",
     "mocha-all": "mocha ./test/**/*.spec.js --reporter spec --timeout 10000 || exit 0",
     "cover-all": "istanbul cover ./node_modules/mocha/bin/_mocha ./test/**/*.spec.js -- -R spec --timeout 10000",
+    "cover-firebase": "firebase emulators:exec --only firestore \"npm run cover-all\"",
     "test-firebase": "firebase emulators:exec --only firestore \"npm run mocha-all\"",
     "test-firebase-one": "firebase emulators:exec --only firestore \"npm run mocha-one\"",
-    "cover-firebase": "firebase emulators:exec --only firestore \"npm run cover-all\"",
     "test-azure": "set PROVIDER=azure && mocha ./test/**/*.spec.js --reporter spec --timeout 10000 || exit 0",
     "test-azure-one": "set PROVIDER=azure && mocha ./test/basic.spec.js --reporter spec --timeout 10000 || exit 0",
-    "test-mongo": "set PROVIDER=mongodb && mocha ./test/**/*.spec.js --reporter spec --timeout 10000 || exit 0"
+    "test-mongo": "set PROVIDER=mongodb && mocha ./test/**/*.spec.js --reporter spec --timeout 10000 || exit 0",
+    "test-mongo-one": "set PROVIDER=mongodb && mocha ./test/basic.spec.js --reporter spec --timeout 10000 || exit 0",
+    "test-dynamo": "set PROVIDER=dynamodb && mocha ./test/**/*.spec.js --reporter spec --timeout 10000 || exit 0",
+    "test-dynamo-one": "set PROVIDER=dynamodb && mocha ./test/basic.spec.js --reporter spec --timeout 10000 || exit 0"
   },
   "repository": {
     "type": "git",
@@ -26,7 +29,8 @@
     "Firebase",
     "Firestore",
     "CosmosDB",
-    "DynamoDB"
+    "DynamoDB",
+    "MongoDB"
   ],
   "author": {
     "name": "rotorsoft",
@@ -45,6 +49,7 @@
     "@azure/cosmos": "^2.1.7",
     "@firebase/testing": "^0.11.4",
     "@google-cloud/firestore": "^2.2.4",
+    "aws-sdk": "^2.499.0",
     "chai": "^4.2.0",
     "coveralls": "^3.0.4",
     "istanbul": "^1.1.0-alpha.1",

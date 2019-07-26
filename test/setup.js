@@ -2,7 +2,8 @@ const chai = require('chai')
 const { Firestore } = require('@google-cloud/firestore')
 const { CosmosClient, ConnectionPolicy } = require('@azure/cosmos')
 const MongoClient = require('mongodb').MongoClient
-const { Factory } = require('../index')
+const AWS = require('aws-sdk')
+const Factory = require('./Factory')
 
 chai.should()
 
@@ -29,6 +30,51 @@ const init = async (provider = 'firebase') => {
   } else if (provider === 'mongodb') {
     const mongo = await MongoClient.connect('mongodb://localhost/', { useNewUrlParser: true })
     return new Factory(mongo)
+  } else if (provider === 'dynamodb') {
+    AWS.config.update({
+      region: "us-west-2",
+      endpoint: "http://localhost:8000"
+    })
+    const dynamo = new AWS.DynamoDB({ apiVersion: '2012-08-10' })
+    const eventsTable = {
+      AttributeDefinitions: [
+        { AttributeName: 'aid', AttributeType: 'S' },
+        { AttributeName: 'id', AttributeType: 'S' },
+        { AttributeName: 'gid', AttributeType: 'S' },
+        { AttributeName: 'grp', AttributeType: 'S' }
+      ],
+      KeySchema: [{ AttributeName: 'aid', KeyType: 'HASH' }, { AttributeName: 'id', KeyType: 'RANGE' }],
+      GlobalSecondaryIndexes: [{
+        IndexName: 'gid',
+        KeySchema: [{ AttributeName: 'grp', KeyType: 'HASH' }, { AttributeName: 'gid', KeyType: 'RANGE' }],
+        Projection: { ProjectionType: 'ALL' },
+        ProvisionedThroughput: { ReadCapacityUnits: 1, WriteCapacityUnits: 1 }
+      }],
+      ProvisionedThroughput: { ReadCapacityUnits: 1, WriteCapacityUnits: 1 },
+      TableName: 'tenant1_events',
+      StreamSpecification: { StreamEnabled: false }
+    }
+    try { await dynamo.createTable(eventsTable).promise() }
+    catch (error) {
+      // console.error(error)
+    }
+    const snapshotsTable = {
+      AttributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+      KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
+      ProvisionedThroughput: { ReadCapacityUnits: 1, WriteCapacityUnits: 1 },
+      TableName: 'tenant1_snapshots',
+      StreamSpecification: { StreamEnabled: false }
+    }
+    try { await dynamo.createTable(snapshotsTable).promise() } catch (error) {}
+    const threadsTable = {
+      AttributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+      KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
+      ProvisionedThroughput: { ReadCapacityUnits: 1, WriteCapacityUnits: 1 },
+      TableName: 'tenant1_threads',
+      StreamSpecification: { StreamEnabled: false }
+    }
+    try { await dynamo.createTable(threadsTable).promise() } catch (error) {}
+    return new Factory(new AWS.DynamoDB.DocumentClient())
   } else {
     console.log(`Invalid provider ${provider}`)
   }
