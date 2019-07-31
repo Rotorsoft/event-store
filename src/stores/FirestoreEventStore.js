@@ -21,7 +21,7 @@ module.exports = class FirestoreEventStore extends IEventStore {
     const { actor, aggregateType } = context
     const collRef = this.firestore.collection(snapshotsPath(actor.tenant))
     if (aggregateId) {
-      // load snapshot if path provided
+      // load snapshot
       const doc = aggregateType.snapshot ? await collRef.doc(aggregateId).get() : null
       const aggregate = Aggregate.create(aggregateType, doc && doc.exists ? doc.data() : { _aggregate_id_: aggregateId, _aggregate_version_: -1 })
       const eventsRef = this.firestore.collection(eventsPath(actor.tenant))
@@ -31,7 +31,6 @@ module.exports = class FirestoreEventStore extends IEventStore {
         const envelopes = await eventsRef.where('aid', '==', aggregateId).where('id', '>', pad(aggregate.aggregateVersion)).get()
         if (!envelopes.size) break
         aggregate._replay(envelopes.docs.map(envelope => envelope.data()))
-        expectedVersion = Math.max(expectedVersion, aggregate.aggregateVersion)
       }
       return aggregate
     }

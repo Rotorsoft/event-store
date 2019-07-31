@@ -123,7 +123,6 @@ module.exports = class CosmosDbEventStore extends IEventStore {
         const envelopes = await this.loadEvents(context.events_container, aggregateId, pad(aggregate.aggregateVersion))
         if (!envelopes.length) break
         aggregate._replay(envelopes)
-        expectedVersion = Math.max(expectedVersion, aggregate.aggregateVersion)
       }
       return aggregate
     }

@@ -20,7 +20,7 @@ module.exports = class MongoDbEventStore extends IEventStore {
     const snaps_collection = context._db.collection('snapshots')
 
     if (aggregateId) {
-      // load snapshot if path provided
+      // load snapshot
       const doc = aggregateType.snapshot ? await snaps_collection.find({ _id: aggregateId }).toArray() : null
       const aggregate = Aggregate.create(aggregateType, doc && doc.length ? doc[0] : { _aggregate_id_: aggregateId, _aggregate_version_: -1 })
       
@@ -29,7 +29,6 @@ module.exports = class MongoDbEventStore extends IEventStore {
         const envelopes = await events_collection.find({ aid: aggregateId, id: { $gt: pad(aggregate.aggregateVersion) }}).toArray()
         if (!envelopes.length) break
         aggregate._replay(envelopes)
-        expectedVersion = Math.max(expectedVersion, aggregate.aggregateVersion)
       }
       return aggregate
     }

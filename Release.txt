@@ -41,3 +41,7 @@
 * Changed gid format in envelope
 * Full actor object in envelope
 
+0.3.4
+* Load events to the end when expected version is -1
+
+

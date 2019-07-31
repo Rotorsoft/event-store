@@ -17,7 +17,7 @@ module.exports = class DynamoDbEventStore extends IEventStore {
     const { actor, aggregateType } = context
 
     if (aggregateId) {
-      // load snapshot if path provided
+      // load snapshot
       const snap_params = {
         TableName: actor.tenant.concat('_snapshots'),
         Key: { 'id': aggregateId }
@@ -35,7 +35,6 @@ module.exports = class DynamoDbEventStore extends IEventStore {
         const envelopes = await this.dynamo.query(query_params).promise()
         if (!envelopes.Count) break
         aggregate._replay(envelopes.Items)
-        expectedVersion = Math.max(expectedVersion, aggregate.aggregateVersion)
       }
       return aggregate
     }
@@ -51,7 +50,7 @@ module.exports = class DynamoDbEventStore extends IEventStore {
       const envelope = context._envelope
       const params = {
         TableName: actor.tenant.concat('_events'),
-        Item: Object.assign({ grp: envelope.gid.substr(0, 5) }, envelope), // add property for global event replaying
+        Item: Object.assign({ grp: envelope.gid.substr(0, 4) }, envelope), // add property for global event replaying
         ConditionExpression: 'attribute_not_exists(id)'
       }
       await this.dynamo.put(params).promise()
@@ -105,7 +104,7 @@ module.exports = class DynamoDbEventStore extends IEventStore {
         IndexName: 'gid',
         Limit: limit + 1,
         KeyConditionExpression: "grp = :grp and gid > :offset",
-        ExpressionAttributeValues: { ':grp': now.toString().substr(0, 5), ':offset': offset }
+        ExpressionAttributeValues: { ':grp': new Date().getFullYear().toString(), ':offset': offset }
       }
       const envelopes = await this.dynamo.query(query_params).promise()
       if (envelopes.Count) {
@@ -125,6 +124,7 @@ module.exports = class DynamoDbEventStore extends IEventStore {
         lease = new Lease({ token: now, cursors, envelopes: envelopes.Items, offset })
       }
     } catch (error) {
+      console.log(error)
       return null
     }
     return lease
@@ -157,6 +157,7 @@ module.exports = class DynamoDbEventStore extends IEventStore {
       }
       await this.dynamo.transactWrite(params).promise()
     } catch (error) {
+      console.log(error)
       Err.concurrency()
     }
   }
