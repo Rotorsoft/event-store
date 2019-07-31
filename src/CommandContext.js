@@ -41,7 +41,6 @@ module.exports = class CommandContext {
       id,
       aid: this.aggregate ? this.aggregate.aggregateId : this.aggregateId,
       gid: new Date().toISOString().concat('.', id),
-      type: this.aggregateType.name,
       command: this.command,
       actor: Object.assign({}, this.actor),
       events: this.events

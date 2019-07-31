@@ -44,4 +44,7 @@
 0.3.4
 * Load events to the end when expected version is -1
 
+0.3.5
+* Removed name from actor
+* Removed type from envelope
 
