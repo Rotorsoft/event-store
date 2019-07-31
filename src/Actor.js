@@ -3,15 +3,25 @@
 const Err = require('./Err')
 
 module.exports = class Actor {
-  constructor ({ tenant, id, name, email, roles = [] }) {
+  /**
+   * Constructs new Actor
+   * 
+   * @param {String} tenant The tenant id
+   * @param {String} id The actor id
+   * @param {String} name The actor name
+   * @param {Array} roles The actor roles as array of strings
+   * @param {Object} props Other properties
+   */
+  constructor ({ tenant, id, name, roles = [], ...props }) {
     Err.required('tenant', tenant)
     Err.required('id', id)
     Err.required('name', name)
+    Err.required('roles', roles, 'array')
     this.tenant = tenant
     this.id = id
     this.name = name
-    this.email = email
     this.roles = roles
+    Object.assign(this, props)
     Object.freeze(this)
   }
 }

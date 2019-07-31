@@ -40,10 +40,10 @@ module.exports = class CommandContext {
     return Object.freeze({
       id,
       aid: this.aggregate ? this.aggregate.aggregateId : this.aggregateId,
-      gid: Date.now().toString().concat('.', id),
+      gid: new Date().toISOString().concat('.', id),
       type: this.aggregateType.name,
       command: this.command,
-      actor: this.actor.id,
+      actor: Object.assign({}, this.actor),
       events: this.events
     })
   }

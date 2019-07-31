@@ -8,7 +8,7 @@ module.exports = class ConsoleTracer extends ITracer {
   }
 
   trace (fn) {
-    const { method, context, tenant, thread, handler, error, envelope, lease, ...args } = fn()
+    const { method, context, tenant, handler, error, envelope, lease, ...args } = fn()
     if (error) {
       console.log(`!!! ERROR: ${error}`)
     }
@@ -26,8 +26,9 @@ module.exports = class ConsoleTracer extends ITracer {
       console.log(lease)
     }
 
-    // if (method === 'commitEvents') {
-    //   console.log(events)
-    // }
+    if (method === 'commitEvents') {
+      console.log(`events committed on ${context.command}`)
+      console.log(context.events)
+    }
   }
 }

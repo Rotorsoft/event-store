@@ -109,18 +109,19 @@ module.exports = class DynamoDbEventStore extends IEventStore {
       }
       const envelopes = await this.dynamo.query(query_params).promise()
       if (envelopes.Count) {
-        thread.lease = { token: now, offset, expiresAt: Date.now() + context.timeout }
+        thread.lease = { token_: now, offset, expiresAt: Date.now() + context.timeout }
         const params = {
           TransactItems: [{
             Put: {
               TableName: context.tenant.concat('_threads'),
-              Item: thread
-              // ConditionExpression: 'attribute_not_exists(lease) or lease.expiresAt < :now',
-              // ExpressionAttributeValues: { ':now': { N: now } }
+              Item: thread,
+              ConditionExpression: 'attribute_not_exists(lease) or (lease.expiresAt < :now)',
+              ExpressionAttributeValues: { ':now': now }
             }
           }]
         }
         await this.dynamo.transactWrite(params).promise()
+
         lease = new Lease({ token: now, cursors, envelopes: envelopes.Items, offset })
       }
     } catch (error) {
@@ -137,21 +138,20 @@ module.exports = class DynamoDbEventStore extends IEventStore {
       Key: { 'id': context.thread }
     }
     const doc = await this.dynamo.get(params).promise()
-    const thread = doc.Item || {}
+    const thread = doc.Item
 
     // commit when lease matches
-    if (!(thread.lease && thread.lease.token === lease.token)) Err.concurrency()
+    if (!(thread && thread.lease && thread.lease.token_ === lease.token)) Err.concurrency()
     try {
       thread.cursors = Object.assign({}, thread.cursors, lease.cursors)
-      thread.lease = {}
+      thread.lease = { expiresAt: 0 }
       const params = {
         TransactItems: [{
           Put: {
             TableName: context.tenant.concat('_threads'),
-            Item: thread //,
-            // ConditionExpression: 'attribute_exists(lease) and #token = :token',
-            // ExpressionAttributeNames: { '#token': 'lease.token' },
-            // ExpressionAttributeValues: { ':token': { N: lease.token } }
+            Item: thread,
+            ConditionExpression: 'lease.token_ = :token',
+            ExpressionAttributeValues: { ':token': lease.token }
           }
         }]
       }

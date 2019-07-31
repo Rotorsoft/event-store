@@ -36,3 +36,8 @@
 * Added dynamodb store (work in progress)
 * Moved factory to test folder
 
+0.3.3
+* Dynamodb store
+* Changed gid format in envelope
+* Full actor object in envelope
+
